@@ -6,17 +6,25 @@ use std::{
 use reqwest::Client;
 use serde_json::Value;
 
+/// Result of exchanging an authorization code or refresh token.
 pub struct TokenExchange {
+    /// OAuth access token.
     pub access_token: String,
+    /// OAuth refresh token.
     pub refresh_token: String,
+    /// Expiration time as seconds since epoch.
     pub expires_at: u64,
 }
 
+/// Access token returned from the client credentials flow.
 pub struct ClientCredentialsToken {
+    /// OAuth access token.
     pub access_token: String,
+    /// Expiration time as seconds since epoch.
     pub expires_at: u64,
 }
 
+/// Fetch an access token using the client credentials flow.
 pub async fn fetch_client_credentials_token(
     client_id: &str,
     client_secret: &str,
@@ -33,6 +41,7 @@ pub async fn fetch_client_credentials_token(
     Ok(token.access_token)
 }
 
+/// Fetch a client-credentials token along with its expiry timestamp.
 pub async fn fetch_client_credentials_token_with_expiry(
     client_id: &str,
     client_secret: &str,
@@ -89,6 +98,7 @@ pub async fn fetch_client_credentials_token_with_expiry(
     })
 }
 
+/// Validate client credentials by acquiring a token.
 pub async fn validate_client_credentials(
     client_id: &str,
     client_secret: &str,
@@ -99,6 +109,7 @@ pub async fn validate_client_credentials(
     Ok(())
 }
 
+/// Exchange an authorization code (or password grant) for tokens.
 pub async fn exchange_authorization_code(
     client_id: &str,
     client_secret: &str,
@@ -174,6 +185,7 @@ pub async fn exchange_authorization_code(
     })
 }
 
+/// Refresh an authorization code token using a refresh token.
 pub async fn refresh_authorization_token(
     client_id: &str,
     client_secret: &str,

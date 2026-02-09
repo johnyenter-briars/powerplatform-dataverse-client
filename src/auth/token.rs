@@ -8,31 +8,49 @@ use crate::auth::credentials::{
 
 const REFRESH_SKEW_SECS: u64 = 300;
 
+/// Cached access token and optional expiry.
 #[derive(Clone, Debug)]
 pub struct CachedToken {
+    /// OAuth access token.
     pub access_token: String,
+    /// Expiration time as seconds since epoch.
     pub expires_at: Option<u64>,
 }
 
+/// Authentication configuration for acquiring Dataverse access tokens.
 #[derive(Clone, Debug)]
 pub enum AuthConfig {
+    /// Client credentials (app-only) flow configuration.
     ClientCredentials {
+        /// Azure AD client ID.
         client_id: String,
+        /// Azure AD client secret.
         client_secret: String,
+        /// Azure AD tenant ID.
         tenant_id: String,
+        /// OAuth scope string.
         scope: String,
     },
+    /// Authorization code flow configuration.
     AuthorizationCode {
+        /// Azure AD client ID.
         client_id: String,
+        /// Azure AD client secret.
         client_secret: String,
+        /// Azure AD tenant ID.
         tenant_id: String,
+        /// OAuth scope string.
         scope: String,
+        /// Current access token.
         access_token: String,
+        /// Refresh token for renewing the access token.
         refresh_token: String,
+        /// Expiration time as seconds since epoch.
         expires_at: Option<u64>,
     },
 }
 
+/// Current timestamp in seconds since epoch.
 fn now_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -40,6 +58,7 @@ fn now_secs() -> u64 {
         .as_secs()
 }
 
+/// Returns true if the token is missing or nearing expiry.
 pub fn is_expiring_soon(expires_at: Option<u64>) -> bool {
     let Some(exp) = expires_at else {
         return true;
@@ -47,10 +66,12 @@ pub fn is_expiring_soon(expires_at: Option<u64>) -> bool {
     now_secs() + REFRESH_SKEW_SECS >= exp
 }
 
+/// Parse an expiry timestamp from a string.
 pub fn parse_expires_at(value: &str) -> Option<u64> {
     value.trim().parse::<u64>().ok()
 }
 
+/// Fetch a fresh access token for the provided auth configuration.
 pub async fn fetch_token(auth: &AuthConfig) -> Result<CachedToken, String> {
     match auth {
         AuthConfig::ClientCredentials {
@@ -110,6 +131,7 @@ pub async fn fetch_token(auth: &AuthConfig) -> Result<CachedToken, String> {
     }
 }
 
+/// Populate a token cache with a valid token for the given key.
 pub async fn prime_token_cache<K: Eq + Hash + Clone>(
     auth: &AuthConfig,
     cache: &mut HashMap<K, CachedToken>,
@@ -140,6 +162,7 @@ pub async fn prime_token_cache<K: Eq + Hash + Clone>(
     Ok(())
 }
 
+/// Return a valid access token from cache or by fetching a new one.
 pub async fn get_access_token<K: Eq + Hash + Clone>(
     auth: &AuthConfig,
     cache: &mut HashMap<K, CachedToken>,

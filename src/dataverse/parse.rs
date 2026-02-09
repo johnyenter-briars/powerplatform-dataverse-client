@@ -5,6 +5,7 @@ use serde_json::Value;
 use crate::dataverse::entity::Value::{Boolean, Float, Int, Null, String};
 use crate::dataverse::entity::{Attribute, Entity, Value as RowValue};
 
+/// Determine if a Dataverse response indicates more records.
 pub(crate) fn parse_more_records(json: &Value) -> bool {
     match json.get("@Microsoft.Dynamics.CRM.morerecords") {
         Some(Value::Bool(value)) => *value,
@@ -13,6 +14,7 @@ pub(crate) fn parse_more_records(json: &Value) -> bool {
     }
 }
 
+/// Extract the paging cookie from a Dataverse response.
 pub(crate) fn extract_paging_cookie(json: &Value) -> Option<std::string::String> {
     let cookie_element = json
         .get("@Microsoft.Dynamics.CRM.fetchxmlpagingcookie")
@@ -26,6 +28,7 @@ pub(crate) fn extract_paging_cookie(json: &Value) -> Option<std::string::String>
     Some(decoded_twice)
 }
 
+/// Parse entities from a Dataverse list response.
 pub(crate) fn parse_entities_from_response(json: &Value) -> Result<Vec<Entity>, std::string::String> {
     let response_object = json
         .as_object()
@@ -61,6 +64,7 @@ pub(crate) fn parse_entities_from_response(json: &Value) -> Result<Vec<Entity>, 
     Ok(entities)
 }
 
+/// Count the number of records in a Dataverse list response.
 pub(crate) fn parse_record_count_from_response(json: &Value) -> Result<usize, std::string::String> {
     let response_object = json
         .as_object()
@@ -75,6 +79,7 @@ pub(crate) fn parse_record_count_from_response(json: &Value) -> Result<usize, st
     Ok(response_array.len())
 }
 
+/// Convert a JSON value into a Dataverse attribute value.
 fn add_attribute(
     attributes: &mut HashMap<Attribute, RowValue>,
     key: &str,

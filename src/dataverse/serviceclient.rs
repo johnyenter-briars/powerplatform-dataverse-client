@@ -17,11 +17,13 @@ use crate::LogLevel;
 const ROW_NUMBER_ATTRIBUTE: &str = "__rownum";
 const AGGREGATE_PAGE_SIZE: i32 = 5000;
 
+/// OData list wrapper returned by Dataverse metadata endpoints.
 #[derive(Debug, serde::Deserialize)]
 struct ODataList<T> {
     value: Vec<T>,
 }
 
+/// HTTP client for Dataverse Web API operations.
 pub struct ServiceClient {
     client: Client,
     base_url: std::string::String,
@@ -30,6 +32,7 @@ pub struct ServiceClient {
 }
 
 impl ServiceClient {
+    /// Create a new client for the given base URL and access token.
     pub fn new(base_url: &str, token: &str, log_level: LogLevel) -> Self {
         Self {
             client: Client::new(),
@@ -39,6 +42,7 @@ impl ServiceClient {
         }
     }
 
+    /// Fetch a full entity definition by logical name.
     pub async fn _get_entity_metadata(
         &self,
         entity_logical: &str,
@@ -70,6 +74,7 @@ impl ServiceClient {
             .map_err(|e| format!("Failed to parse JSON: {e}"))
     }
 
+    /// Retrieve multiple records by FetchXML, handling paging when needed.
     pub async fn retrieve_multiple_fetchxml(
         &self,
         entity: &str,
@@ -152,6 +157,7 @@ impl ServiceClient {
         Ok(entities)
     }
 
+    /// Count records for a FetchXML query without retrieving all data.
     pub async fn retrieve_multiple_fetchxml_count(
         &self,
         entity: &str,
@@ -227,6 +233,7 @@ impl ServiceClient {
         Ok(total)
     }
 
+    /// Retrieve a single page of FetchXML results.
     async fn retrieve_multiple_fetchxml_single(
         &self,
         entity: &str,
@@ -272,6 +279,7 @@ impl ServiceClient {
         parse_entities_from_response(&json)
     }
 
+    /// List all entity definitions.
     pub async fn list_entity_definitions(
         &self,
     ) -> Result<Vec<EntityDefinition>, std::string::String> {
@@ -304,6 +312,7 @@ impl ServiceClient {
         Ok(parsed.value)
     }
 
+    /// List entity attributes for a given logical name.
     pub async fn list_entity_attributes(
         &self,
         logical_name: &str,
@@ -338,6 +347,7 @@ impl ServiceClient {
         Ok(parsed.value)
     }
 
+    /// Update a single entity record by ID.
     pub async fn update_entity(
         &self,
         entity_set: &str,
@@ -370,6 +380,7 @@ impl ServiceClient {
         Ok(())
     }
 
+    /// Delete a single entity record by ID.
     pub async fn delete_entity(
         &self,
         entity_set: &str,

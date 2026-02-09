@@ -1,3 +1,4 @@
+/// Add paging attributes to a FetchXML query.
 pub(crate) fn apply_paging(
     fetchxml: &str,
     page: i32,
@@ -11,6 +12,7 @@ pub(crate) fn apply_paging(
     Ok(updated)
 }
 
+/// Ensure aggregate queries include a count page size.
 pub(crate) fn ensure_aggregate_page_size(
     fetchxml: &str,
     aggregate_page_size: i32,
@@ -26,6 +28,7 @@ pub(crate) fn ensure_aggregate_page_size(
     upsert_fetch_attr(fetchxml, "count", &aggregate_page_size.to_string())
 }
 
+/// Check whether the `<fetch>` tag contains a given attribute.
 pub(crate) fn fetch_tag_has_attr(fetchxml: &str, name: &str) -> Result<bool, String> {
     let fetch_start = fetchxml
         .find("<fetch")
@@ -39,6 +42,7 @@ pub(crate) fn fetch_tag_has_attr(fetchxml: &str, name: &str) -> Result<bool, Str
     Ok(tag.contains(&format!("{}=", name)))
 }
 
+/// Insert or replace a `<fetch>` tag attribute.
 fn upsert_fetch_attr(fetchxml: &str, name: &str, value: &str) -> Result<String, String> {
     let fetch_start = fetchxml
         .find("<fetch")
@@ -84,6 +88,7 @@ fn upsert_fetch_attr(fetchxml: &str, name: &str, value: &str) -> Result<String, 
     Ok(inserted)
 }
 
+/// Escape XML attribute values for FetchXML.
 fn escape_xml_attribute(value: &str) -> String {
     value
         .replace('&', "&amp;")

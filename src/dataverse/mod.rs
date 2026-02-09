@@ -3,4 +3,4 @@ pub mod entityattribute;
 pub mod entitydefinition;
 pub mod fetchxml;
 pub mod parse;
-pub mod servicecilent;
+pub mod serviceclient;
