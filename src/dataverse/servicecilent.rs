@@ -22,14 +22,14 @@ struct ODataList<T> {
     value: Vec<T>,
 }
 
-pub struct QueryEngine {
+pub struct ServiceClient {
     client: Client,
     base_url: std::string::String,
     token: std::string::String,
     log_level: LogLevel,
 }
 
-impl QueryEngine {
+impl ServiceClient {
     pub fn new(base_url: &str, token: &str, log_level: LogLevel) -> Self {
         Self {
             client: Client::new(),
