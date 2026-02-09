@@ -26,16 +26,3 @@ impl Entity {
         }
     }
 }
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ResultRow {
-    pub attributes: HashMap<Attribute, Value>,
-}
-
-impl ResultRow {
-    pub fn new() -> Self {
-        ResultRow {
-            attributes: HashMap::new(),
-        }
-    }
-}
