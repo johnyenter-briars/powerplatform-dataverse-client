@@ -7,12 +7,9 @@ use serde::Deserialize;
 pub struct Secrets {
     pub client_id: String,
     pub client_secret: String,
-    pub tenant_id: String,
     pub scope: String,
     pub dataverse_url: String,
-    pub sample_entity_logical: String,
-    pub sample_entity_set: String,
-    pub sample_fetchxml: String,
+    pub tenant_id: String,
 }
 
 pub fn load_secrets() -> Result<Secrets, String> {

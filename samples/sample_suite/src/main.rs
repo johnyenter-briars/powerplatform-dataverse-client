@@ -21,8 +21,8 @@ async fn main() -> Result<(), String> {
 
     let client = ServiceClient::new(&secrets.dataverse_url, &token, LogLevel::Information);
 
-    scenarios::metadata::run(&client, &secrets).await?;
-    scenarios::fetchxml::run(&client, &secrets).await?;
+    scenarios::metadata::run(&client).await?;
+    scenarios::fetchxml::run(&client).await?;
 
     Ok(())
 }
