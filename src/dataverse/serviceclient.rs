@@ -42,38 +42,6 @@ impl ServiceClient {
         }
     }
 
-    /// Fetch a full entity definition by logical name.
-    pub async fn _get_entity_metadata(
-        &self,
-        entity_logical: &str,
-    ) -> Result<EntityDefinition, std::string::String> {
-        let logical = entity_logical.replace('\'', "''");
-        let url = format!(
-            "{}/api/data/v9.2/EntityDefinitions(LogicalName='{}')",
-            self.base_url, logical
-        );
-
-        let resp = self
-            .client
-            .get(&url)
-            .bearer_auth(&self.token)
-            .header("Accept", "application/json")
-            .send()
-            .await
-            .map_err(|e| format!("Request failed: {e}"))?;
-
-        let status = resp.status();
-
-        if !status.is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            return Err(format!("Dataverse API error ({}): {}", status, body));
-        }
-
-        resp.json::<EntityDefinition>()
-            .await
-            .map_err(|e| format!("Failed to parse JSON: {e}"))
-    }
-
     /// Retrieve multiple records by FetchXML, handling paging when needed.
     pub async fn retrieve_multiple_fetchxml(
         &self,
