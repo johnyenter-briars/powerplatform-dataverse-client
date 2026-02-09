@@ -1,5 +1,5 @@
 [package]
-name = "sample_suite"
+name = "hello-dataverse"
 version = "0.1.0"
 edition = "2021"
 
