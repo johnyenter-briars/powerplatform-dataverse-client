@@ -7,7 +7,7 @@ license = "MIT"
 homepage = "https://github.com/johnyenter-briars/powerplatform-dataverse-client"
 repository = "https://github.com/johnyenter-briars/powerplatform-dataverse-client"
 readme = "README.md"
-keywords = ["dataverse", "api", "power platform", "microsoft"]
+keywords = ["dataverse", "api", "powerplatform", "microsoft"]
 categories = ["api-bindings"]
 
 [dependencies]
