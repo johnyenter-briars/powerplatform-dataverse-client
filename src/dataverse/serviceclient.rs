@@ -287,7 +287,7 @@ impl ServiceClient {
     ) -> Result<Vec<EntityAttribute>, std::string::String> {
         let logical = logical_name.replace('\'', "''");
         let url = format!(
-            "{}/api/data/v9.2/EntityDefinitions(LogicalName='{}')/Attributes?$select=LogicalName,SchemaName,AttributeType,IsCustomAttribute,IsValidODataAttribute,IsValidForRead&$filter=IsValidODataAttribute eq true and IsValidForRead eq true",
+            "{}/api/data/v9.2/EntityDefinitions(LogicalName='{}')/Attributes?$select=LogicalName,SchemaName,AttributeType,IsCustomAttribute,IsValidODataAttribute,IsValidForRead,IsValidForUpdate&$filter=IsValidODataAttribute eq true and IsValidForRead eq true",
             self.base_url, logical
         );
 
