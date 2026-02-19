@@ -1,10 +1,12 @@
 use std::collections::HashMap;
 
+use log::debug;
 use reqwest::Client;
 use serde_json::Value;
 
-use crate::dataverse::entity::Value::Int;
+use crate::LogLevel;
 use crate::dataverse::entity::Entity;
+use crate::dataverse::entity::Value::Int;
 use crate::dataverse::entityattribute::EntityAttribute;
 use crate::dataverse::entitydefinition::EntityDefinition;
 use crate::dataverse::fetchxml::{apply_paging, ensure_aggregate_page_size, fetch_tag_has_attr};
@@ -12,7 +14,6 @@ use crate::dataverse::parse::{
     extract_paging_cookie, parse_entities_from_response, parse_more_records,
     parse_record_count_from_response,
 };
-use crate::LogLevel;
 
 const ROW_NUMBER_ATTRIBUTE: &str = "__rownum";
 const AGGREGATE_PAGE_SIZE: i32 = 5000;
@@ -65,17 +66,17 @@ impl ServiceClient {
                 paging_cookie.as_deref(),
             )?;
 
-            if matches!(self.log_level, LogLevel::Debug) {
-                println!("Fetch page: {}", page);
-                println!("FetchXML: {}", fetch_with_paging);
+            if self.log_level.includes_debug() {
+                debug!("Fetch page: {}", page);
+                debug!("FetchXML: {}", fetch_with_paging);
             }
 
             let mut url = format!("{}/api/data/v9.2/{}", self.base_url, entity);
             url.push_str("?fetchXml=");
             url.push_str(&urlencoding::encode(&fetch_with_paging));
 
-            if matches!(self.log_level, LogLevel::Debug) {
-                println!("Url: {:?}", url);
+            if self.log_level.includes_debug() {
+                debug!("Url: {:?}", url);
             }
 
             let resp = self
@@ -149,17 +150,17 @@ impl ServiceClient {
                 paging_cookie.as_deref(),
             )?;
 
-            if matches!(self.log_level, LogLevel::Debug) {
-                println!("Fetch page: {}", page);
-                println!("FetchXML: {}", fetch_with_paging);
+            if self.log_level.includes_debug() {
+                debug!("Fetch page: {}", page);
+                debug!("FetchXML: {}", fetch_with_paging);
             }
 
             let mut url = format!("{}/api/data/v9.2/{}", self.base_url, entity);
             url.push_str("?fetchXml=");
             url.push_str(&urlencoding::encode(&fetch_with_paging));
 
-            if matches!(self.log_level, LogLevel::Debug) {
-                println!("Url: {:?}", url);
+            if self.log_level.includes_debug() {
+                debug!("Url: {:?}", url);
             }
 
             let resp = self
@@ -207,16 +208,16 @@ impl ServiceClient {
         entity: &str,
         fetchxml: &str,
     ) -> Result<Vec<Entity>, std::string::String> {
-        if matches!(self.log_level, LogLevel::Debug) {
-            println!("FetchXML: {}", fetchxml);
+        if self.log_level.includes_debug() {
+            debug!("FetchXML: {}", fetchxml);
         }
 
         let mut url = format!("{}/api/data/v9.2/{}", self.base_url, entity);
         url.push_str("?fetchXml=");
         url.push_str(&urlencoding::encode(fetchxml));
 
-        if matches!(self.log_level, LogLevel::Debug) {
-            println!("Url: {:?}", url);
+        if self.log_level.includes_debug() {
+            debug!("Url: {:?}", url);
         }
 
         let resp = self
