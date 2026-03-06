@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Dataverse attribute metadata.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct EntityAttribute {
     /// Logical name of the attribute.
     #[serde(rename = "LogicalName")]
@@ -21,4 +21,7 @@ pub struct EntityAttribute {
     /// True if the attribute is valid for read operations.
     #[serde(rename = "IsValidForRead")]
     pub is_valid_for_read: Option<bool>,
+    /// True if the attribute is valid for update operations.
+    #[serde(rename = "IsValidForUpdate")]
+    pub is_valid_for_update: Option<bool>,
 }
