@@ -31,13 +31,9 @@ pub async fn fetch_client_credentials_token(
     tenant_id: &str,
     scope: &str,
 ) -> Result<String, String> {
-    let token = fetch_client_credentials_token_with_expiry(
-        client_id,
-        client_secret,
-        tenant_id,
-        scope,
-    )
-    .await?;
+    let token =
+        fetch_client_credentials_token_with_expiry(client_id, client_secret, tenant_id, scope)
+            .await?;
     Ok(token.access_token)
 }
 

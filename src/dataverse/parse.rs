@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use log::warn;
 use serde_json::Value;
 
 use crate::dataverse::entity::Value::{Boolean, Float, Int, Null, String};
@@ -29,7 +30,9 @@ pub(crate) fn extract_paging_cookie(json: &Value) -> Option<std::string::String>
 }
 
 /// Parse entities from a Dataverse list response.
-pub(crate) fn parse_entities_from_response(json: &Value) -> Result<Vec<Entity>, std::string::String> {
+pub(crate) fn parse_entities_from_response(
+    json: &Value,
+) -> Result<Vec<Entity>, std::string::String> {
     let response_object = json
         .as_object()
         .ok_or_else(|| "Invalid response from Dataverse".to_string())?;
@@ -54,7 +57,7 @@ pub(crate) fn parse_entities_from_response(json: &Value) -> Result<Vec<Entity>, 
                 .map_err(|_| "Invalid response from Dataverse".to_string())?;
 
             if !implemented {
-                println!("Key: {}, implemented: {:?}", key, implemented);
+                warn!("Unsupported Dataverse key: {}", key);
             }
         }
 
