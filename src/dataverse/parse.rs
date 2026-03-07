@@ -3,8 +3,11 @@ use std::collections::HashMap;
 use log::warn;
 use serde_json::Value;
 
-use crate::dataverse::entity::Value::{Boolean, Float, Int, Null, String};
-use crate::dataverse::entity::{Attribute, Entity, Value as RowValue};
+use crate::dataverse::entity::Value::{
+    Boolean, EntityReference as EntityRefValue, Float, Int, Null, String,
+};
+use crate::dataverse::entity::{Attribute, Entity, EntityReference, Value as RowValue};
+use uuid::Uuid;
 
 /// Determine if a Dataverse response indicates more records.
 pub(crate) fn parse_more_records(json: &Value) -> bool {
@@ -32,6 +35,7 @@ pub(crate) fn extract_paging_cookie(json: &Value) -> Option<std::string::String>
 /// Parse entities from a Dataverse list response.
 pub(crate) fn parse_entities_from_response(
     json: &Value,
+    entity_set: &str,
 ) -> Result<Vec<Entity>, std::string::String> {
     let response_object = json
         .as_object()
@@ -44,20 +48,100 @@ pub(crate) fn parse_entities_from_response(
         .ok_or_else(|| "Invalid response from Dataverse".to_string())?;
 
     let mut entities: Vec<Entity> = vec![];
+    let logical_name = infer_logical_name(entity_set);
+    let primary_id_key = format!("{}id", logical_name);
 
     for record_value in response_array {
-        let mut entity = Entity::new();
-
         let record = record_value
             .as_object()
             .ok_or_else(|| "Invalid response from Dataverse".to_string())?;
 
+        // NOTE: Convention-based primary id without a metadata call.
+        // If missing, we fail fast so the caller can correct it.
+        let id_value = record
+            .get(&primary_id_key)
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| {
+                format!(
+                    "Primary id '{}' not found for entity set '{}'",
+                    primary_id_key, entity_set
+                )
+            })?;
+        let id = Uuid::parse_str(id_value)
+            .map_err(|_| "Invalid response from Dataverse".to_string())?;
+
+        let name = record
+            .get("name")
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string());
+
+        let mut entity = Entity::new(id, &logical_name, name);
+
+        let mut lookup_keys: Vec<(std::string::String, std::string::String)> = Vec::new();
+
         for (key, value) in record {
+            if key.contains('@') {
+                continue;
+            }
+
+            if let Some(base) = lookup_base_attribute(key) {
+                let id = value
+                    .as_str()
+                    .map(|value| value.to_string())
+                    .unwrap_or_default();
+                lookup_keys.push((key.to_string(), base.clone()));
+
+                if id.is_empty() {
+                    entity.attributes.insert(base, Null);
+                }
+                continue;
+            }
+
             let implemented = add_attribute(&mut entity.attributes, key, value)
                 .map_err(|_| "Invalid response from Dataverse".to_string())?;
 
             if !implemented {
                 warn!("Unsupported Dataverse key: {}", key);
+            }
+        }
+
+        for (raw_key, base) in lookup_keys {
+            if entity.attributes.contains_key(&base) {
+                continue;
+            }
+
+            let Some(id_value) = record.get(&raw_key).and_then(|value| value.as_str()) else {
+                entity.attributes.insert(base, Null);
+                continue;
+            };
+
+            let logical_key = format!("{raw_key}@Microsoft.Dynamics.CRM.lookuplogicalname");
+            let formatted_key = format!("{raw_key}@OData.Community.Display.V1.FormattedValue");
+
+            let logical_name = record
+                .get(&logical_key)
+                .and_then(|value| value.as_str())
+                .map(|value| value.to_string());
+
+            let name = record
+                .get(&formatted_key)
+                .and_then(|value| value.as_str())
+                .map(|value| value.to_string());
+
+            if let Some(logical_name) = logical_name {
+                let id = Uuid::parse_str(id_value)
+                    .map_err(|_| "Invalid response from Dataverse".to_string())?;
+                entity.attributes.insert(
+                    base,
+                    EntityRefValue(EntityReference {
+                        id,
+                        logical_name,
+                        name,
+                    }),
+                );
+            } else {
+                warn!("Lookup logical name missing for key: {}", raw_key);
+                entity.attributes.insert(base, String(id_value.to_string()));
             }
         }
 
@@ -138,4 +222,45 @@ fn add_attribute(
     }
 
     Ok(true)
+}
+
+fn lookup_base_attribute(key: &str) -> Option<std::string::String> {
+    if !key.starts_with('_') || !key.ends_with("_value") {
+        return None;
+    }
+
+    let trimmed = &key[1..key.len() - "_value".len()];
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    Some(trimmed.to_string())
+}
+
+fn infer_logical_name(entity_set: &str) -> std::string::String {
+    let normalized = entity_set.trim().to_ascii_lowercase();
+
+    if normalized.ends_with("ies") && normalized.len() > 3 {
+        return format!("{}y", &normalized[..normalized.len() - 3]);
+    }
+
+    if ends_with_any(&normalized, &["ses", "xes", "zes", "ches", "shes"]) && normalized.len() > 2
+    {
+        return normalized[..normalized.len() - 2].to_string();
+    }
+
+    if normalized.ends_with('s')
+        && !normalized.ends_with("ss")
+        && !normalized.ends_with("us")
+        && !normalized.ends_with("is")
+        && normalized.len() > 1
+    {
+        return normalized[..normalized.len() - 1].to_string();
+    }
+
+    normalized
+}
+
+fn ends_with_any(name: &str, suffixes: &[&str]) -> bool {
+    suffixes.iter().any(|suffix| name.ends_with(suffix))
 }

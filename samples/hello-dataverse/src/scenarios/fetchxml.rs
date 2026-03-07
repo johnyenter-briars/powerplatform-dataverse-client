@@ -1,23 +1,29 @@
 use powerplatform_dataverse_client::dataverse::serviceclient::ServiceClient;
 
+const DEBUG_OUTPUT: bool = true;
+
 pub async fn run(client: &ServiceClient) -> Result<(), String> {
     println!("Scenario: fetchxml");
 
     let accounts_fetchxml = r#"
         <fetch top="5">
-        <entity name="account">
-            <attribute name="accountid" />
-            <attribute name="name" />
-        </entity>
+            <entity name="account">
+                <attribute name="accountid" />
+                <attribute name="name" />
+                <attribute name="ownerid" />
+                <attribute name="primarycontactid" />
+            </entity>
         </fetch>
     "#;
 
     let contacts_fetchxml = r#"
         <fetch top="5">
-        <entity name="contact">
-            <attribute name="contactid" />
-            <attribute name="fullname" />
-        </entity>
+            <entity name="contact">
+                <attribute name="contactid" />
+                <attribute name="fullname" />
+                <attribute name="ownerid" />
+                <attribute name="parentcustomerid" />
+            </entity>
         </fetch>
     "#;
 
@@ -37,6 +43,10 @@ async fn run_fetchxml(
         .await?;
 
     println!("FetchXML [{}] returned {} record(s)", entity_set, entities.len());
+
+    if DEBUG_OUTPUT {
+        println!("{:#?}", entities);
+    }
 
     if let Some(first) = entities.first() {
         let mut keys = first
