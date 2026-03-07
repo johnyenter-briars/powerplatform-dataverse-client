@@ -104,7 +104,7 @@ impl ServiceClient {
                 .await
                 .map_err(|e| format!("Failed to parse JSON: {e}"))?;
 
-            let mut page_entities = parse_entities_from_response(&json)?;
+            let mut page_entities = parse_entities_from_response(&json, entity)?;
             let start_index = entities.len();
             for (offset, entity) in page_entities.iter_mut().enumerate() {
                 let row_number = (start_index + offset + 1) as i64;
@@ -245,7 +245,7 @@ impl ServiceClient {
             .await
             .map_err(|e| format!("Failed to parse JSON: {e}"))?;
 
-        parse_entities_from_response(&json)
+        parse_entities_from_response(&json, entity)
     }
 
     /// List all entity definitions.

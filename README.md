@@ -78,10 +78,12 @@ async fn main() -> Result<(), String> {
 | FetchXML count helper | ✅ |
 | Entity definitions metadata | ✅ |
 | Entity attributes metadata | ✅ |
+| Entity identity fields (id/logical/name via convention) | ✅ |
 | Update entity by ID | ✅ |
 | Delete entity by ID | ✅ |
 | Create entity | ❌ |
 | Retrieve entity by ID | ❌ |
+| Entity multi-identity fields | ❌ |
 | Batch operations | ❌ |
 | Retry/backoff | ❌ |
 | Request / Response Objects (Replicating the C# SDK) | ❌ |
@@ -92,16 +94,16 @@ async fn main() -> Result<(), String> {
 
 | Data Type | Supported | Rust Type |
 | --- | --- | --- |
+| GUID / Primary Entity ID | ✅ | `Uuid` |
 | `Int` | ✅ | `Value::Int(i64)` |
 | `Float` | ✅ | `Value::Float(f64)` |
 | `String` | ✅ | `Value::String(String)` |
 | `Boolean` | ✅ | `Value::Boolean(bool)` |
 | `Null` | ✅ | `Value::Null` |
-| GUID / Entity ID | ❌ | N/A |
+| Lookups / entity references | ✅ | `Value::EntityReference(EntityReference)` |
 | Date/time | ❌ | N/A |
 | Option sets / labeled values | ❌ | N/A |
 | Money | ❌ | N/A |
-| Lookups / entity references | ❌ | N/A |
 | Aliased values | ❌ | N/A |
 | Complex types | ❌ | N/A |
 | Collections / arrays | ❌ | N/A |

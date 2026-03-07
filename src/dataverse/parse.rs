@@ -35,6 +35,7 @@ pub(crate) fn extract_paging_cookie(json: &Value) -> Option<std::string::String>
 /// Parse entities from a Dataverse list response.
 pub(crate) fn parse_entities_from_response(
     json: &Value,
+    entity_set: &str,
 ) -> Result<Vec<Entity>, std::string::String> {
     let response_object = json
         .as_object()
@@ -47,13 +48,34 @@ pub(crate) fn parse_entities_from_response(
         .ok_or_else(|| "Invalid response from Dataverse".to_string())?;
 
     let mut entities: Vec<Entity> = vec![];
+    let logical_name = infer_logical_name(entity_set);
+    let primary_id_key = format!("{}id", logical_name);
 
     for record_value in response_array {
-        let mut entity = Entity::default();
-
         let record = record_value
             .as_object()
             .ok_or_else(|| "Invalid response from Dataverse".to_string())?;
+
+        // NOTE: Convention-based primary id without a metadata call.
+        // If missing, we fail fast so the caller can correct it.
+        let id_value = record
+            .get(&primary_id_key)
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| {
+                format!(
+                    "Primary id '{}' not found for entity set '{}'",
+                    primary_id_key, entity_set
+                )
+            })?;
+        let id = Uuid::parse_str(id_value)
+            .map_err(|_| "Invalid response from Dataverse".to_string())?;
+
+        let name = record
+            .get("name")
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string());
+
+        let mut entity = Entity::new(id, &logical_name, name);
 
         let mut lookup_keys: Vec<(std::string::String, std::string::String)> = Vec::new();
 
@@ -213,4 +235,32 @@ fn lookup_base_attribute(key: &str) -> Option<std::string::String> {
     }
 
     Some(trimmed.to_string())
+}
+
+fn infer_logical_name(entity_set: &str) -> std::string::String {
+    let normalized = entity_set.trim().to_ascii_lowercase();
+
+    if normalized.ends_with("ies") && normalized.len() > 3 {
+        return format!("{}y", &normalized[..normalized.len() - 3]);
+    }
+
+    if ends_with_any(&normalized, &["ses", "xes", "zes", "ches", "shes"]) && normalized.len() > 2
+    {
+        return normalized[..normalized.len() - 2].to_string();
+    }
+
+    if normalized.ends_with('s')
+        && !normalized.ends_with("ss")
+        && !normalized.ends_with("us")
+        && !normalized.ends_with("is")
+        && normalized.len() > 1
+    {
+        return normalized[..normalized.len() - 1].to_string();
+    }
+
+    normalized
+}
+
+fn ends_with_any(name: &str, suffixes: &[&str]) -> bool {
+    suffixes.iter().any(|suffix| name.ends_with(suffix))
 }
