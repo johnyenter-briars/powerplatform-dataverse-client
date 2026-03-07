@@ -5,21 +5,23 @@ pub async fn run(client: &ServiceClient) -> Result<(), String> {
 
     let accounts_fetchxml = r#"
         <fetch top="5">
-        <entity name="account">
-            <attribute name="accountid" />
-            <attribute name="name" />
-            <attribute name="ownerid" />
-        </entity>
+            <entity name="account">
+                <attribute name="accountid" />
+                <attribute name="name" />
+                <attribute name="ownerid" />
+                <attribute name="primarycontactid" />
+            </entity>
         </fetch>
     "#;
 
     let contacts_fetchxml = r#"
         <fetch top="5">
-        <entity name="contact">
-            <attribute name="contactid" />
-            <attribute name="fullname" />
-            <attribute name="ownerid" />
-        </entity>
+            <entity name="contact">
+                <attribute name="contactid" />
+                <attribute name="fullname" />
+                <attribute name="ownerid" />
+                <attribute name="parentcustomerid" />
+            </entity>
         </fetch>
     "#;
 

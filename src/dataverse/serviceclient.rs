@@ -86,7 +86,7 @@ impl ServiceClient {
                 .header("Accept", "application/json")
                 .header(
                     "Prefer",
-                    "odata.include-annotations=\"Microsoft.Dynamics.CRM.fetchxmlpagingcookie,Microsoft.Dynamics.CRM.morerecords\"",
+                    "odata.include-annotations=\"Microsoft.Dynamics.CRM.fetchxmlpagingcookie,Microsoft.Dynamics.CRM.morerecords,Microsoft.Dynamics.CRM.lookuplogicalname,OData.Community.Display.V1.FormattedValue\"",
                 )
                 .send()
                 .await
@@ -170,7 +170,7 @@ impl ServiceClient {
                 .header("Accept", "application/json")
                 .header(
                     "Prefer",
-                    "odata.include-annotations=\"Microsoft.Dynamics.CRM.fetchxmlpagingcookie,Microsoft.Dynamics.CRM.morerecords\"",
+                    "odata.include-annotations=\"Microsoft.Dynamics.CRM.fetchxmlpagingcookie,Microsoft.Dynamics.CRM.morerecords,Microsoft.Dynamics.CRM.lookuplogicalname,OData.Community.Display.V1.FormattedValue\"",
                 )
                 .send()
                 .await
@@ -216,7 +216,6 @@ impl ServiceClient {
         url.push_str("?fetchXml=");
         url.push_str(&urlencoding::encode(fetchxml));
 
-        println!("Url: {:?}", url);
         if self.log_level.includes_debug() {
             debug!("Url: {:?}", url);
         }
@@ -228,7 +227,7 @@ impl ServiceClient {
             .header("Accept", "application/json")
             .header(
                 "Prefer",
-                "odata.include-annotations=\"Microsoft.Dynamics.CRM.fetchxmlpagingcookie,Microsoft.Dynamics.CRM.morerecords,OData.Community.Display.V1.FormattedValue\"",
+                "odata.include-annotations=\"Microsoft.Dynamics.CRM.fetchxmlpagingcookie,Microsoft.Dynamics.CRM.morerecords,Microsoft.Dynamics.CRM.lookuplogicalname,OData.Community.Display.V1.FormattedValue\"",
             )
             .send()
             .await
@@ -245,8 +244,6 @@ impl ServiceClient {
             .json()
             .await
             .map_err(|e| format!("Failed to parse JSON: {e}"))?;
-
-        println!("{:?}", json);
 
         parse_entities_from_response(&json)
     }
