@@ -1,5 +1,7 @@
 use powerplatform_dataverse_client::dataverse::serviceclient::ServiceClient;
 
+const DEBUG_OUTPUT: bool = true;
+
 pub async fn run(client: &ServiceClient) -> Result<(), String> {
     println!("Scenario: fetchxml");
 
@@ -41,6 +43,10 @@ async fn run_fetchxml(
         .await?;
 
     println!("FetchXML [{}] returned {} record(s)", entity_set, entities.len());
+
+    if DEBUG_OUTPUT {
+        println!("{:#?}", entities);
+    }
 
     if let Some(first) = entities.first() {
         let mut keys = first

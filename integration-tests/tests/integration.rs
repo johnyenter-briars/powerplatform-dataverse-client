@@ -4,6 +4,8 @@ use powerplatform_dataverse_client::LogLevel;
 
 use powerplatform_dataverse_integration_tests::config::load_secrets;
 
+const DEBUG_OUTPUT: bool = false;
+
 async fn create_client() -> Result<ServiceClient, String> {
     let secrets = load_secrets()?;
 
@@ -70,6 +72,9 @@ async fn fetchxml_smoke() -> Result<(), String> {
     let entities = client
         .retrieve_multiple_fetchxml("accounts", accounts_fetchxml)
         .await?;
+    if DEBUG_OUTPUT {
+        println!("{:#?}", entities);
+    }
 
     let count = client
         .retrieve_multiple_fetchxml_count("accounts", accounts_fetchxml)
