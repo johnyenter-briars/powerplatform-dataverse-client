@@ -1,5 +1,4 @@
 use powerplatform_dataverse_client::auth::credentials::fetch_client_credentials_token;
-use powerplatform_dataverse_client::dataverse::entity::Value;
 use powerplatform_dataverse_client::dataverse::serviceclient::ServiceClient;
 use powerplatform_dataverse_client::LogLevel;
 

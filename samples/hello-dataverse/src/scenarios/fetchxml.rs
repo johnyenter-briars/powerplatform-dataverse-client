@@ -8,6 +8,7 @@ pub async fn run(client: &ServiceClient) -> Result<(), String> {
         <entity name="account">
             <attribute name="accountid" />
             <attribute name="name" />
+            <attribute name="ownerid" />
         </entity>
         </fetch>
     "#;
@@ -17,6 +18,7 @@ pub async fn run(client: &ServiceClient) -> Result<(), String> {
         <entity name="contact">
             <attribute name="contactid" />
             <attribute name="fullname" />
+            <attribute name="ownerid" />
         </entity>
         </fetch>
     "#;

@@ -46,7 +46,7 @@ pub(crate) fn parse_entities_from_response(
     let mut entities: Vec<Entity> = vec![];
 
     for record_value in response_array {
-        let mut entity = Entity::new();
+        let mut entity = Entity::default();
 
         let record = record_value
             .as_object()

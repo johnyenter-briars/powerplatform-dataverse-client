@@ -22,17 +22,8 @@ pub enum Value {
 pub type Attribute = String;
 
 /// Dataverse entity record with attribute values.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Default)]
 pub struct Entity {
     /// Attribute map keyed by logical names.
     pub attributes: HashMap<Attribute, Value>,
-}
-
-impl Entity {
-    /// Create a new empty entity.
-    pub fn new() -> Self {
-        Entity {
-            attributes: HashMap::new(),
-        }
-    }
 }
