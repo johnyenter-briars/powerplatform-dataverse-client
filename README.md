@@ -70,8 +70,7 @@ async fn main() -> Result<(), String> {
 | Feature | Supported |
 | --- | --- |
 | Client-credentials auth | ✅ |
-| Authorization code / password grant token exchange | ✅ |
-| Refresh-token flow | ❌ |
+| Authorization code / password grant token exchange | ❌ |
 | Automatic token refresh (auth code flow) | ❌ |
 | FetchXML retrieval | ✅ |
 | FetchXML paging | ✅ |
@@ -101,12 +100,14 @@ async fn main() -> Result<(), String> {
 | `Boolean` | ✅ | `Value::Boolean(bool)` |
 | `Null` | ✅ | `Value::Null` |
 | Lookups / entity references | ✅ | `Value::EntityReference(EntityReference)` |
-| Date/time | ❌ | N/A |
-| Option sets / labeled values | ❌ | N/A |
-| Money | ❌ | N/A |
+| Polymorphic lookups | ⏳ | N/A |
+| Option sets / labeled values | ⏳ | N/A |
+| Multi-select | ⏳ | N/A |
+| Date/time | ⏳ | N/A |
+| Floating Point Number | ⏳ | N/A |
+| Money | ⏳ | N/A |
 | Aliased values | ❌ | N/A |
-| Complex types | ❌ | N/A |
-| Collections / arrays | ❌ | N/A |
+| EntityList | ❌ | N/A |
 
 ## Samples
 
