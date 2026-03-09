@@ -17,6 +17,15 @@ use crate::dataverse::parse::{
 
 const ROW_NUMBER_ATTRIBUTE: &str = "__rownum";
 const AGGREGATE_PAGE_SIZE: i32 = 5000;
+const FETCH_ANNOTATIONS: &str = concat!(
+    "odata.include-annotations=\"",
+    "OData.Community.Display.V1.FormattedValue,",
+    "Microsoft.Dynamics.CRM.associatednavigationproperty,",
+    "Microsoft.Dynamics.CRM.lookuplogicalname,",
+    "Microsoft.Dynamics.CRM.fetchxmlpagingcookie,",
+    "Microsoft.Dynamics.CRM.morerecords",
+    "\""
+);
 
 /// OData list wrapper returned by Dataverse metadata endpoints.
 #[derive(Debug, serde::Deserialize)]
@@ -84,10 +93,7 @@ impl ServiceClient {
                 .get(&url)
                 .bearer_auth(&self.token)
                 .header("Accept", "application/json")
-                .header(
-                    "Prefer",
-                    "odata.include-annotations=\"Microsoft.Dynamics.CRM.fetchxmlpagingcookie,Microsoft.Dynamics.CRM.morerecords\"",
-                )
+                .header("Prefer", FETCH_ANNOTATIONS)
                 .send()
                 .await
                 .map_err(|e| format!("Request failed: {e}"))?;
@@ -168,10 +174,7 @@ impl ServiceClient {
                 .get(&url)
                 .bearer_auth(&self.token)
                 .header("Accept", "application/json")
-                .header(
-                    "Prefer",
-                    "odata.include-annotations=\"Microsoft.Dynamics.CRM.fetchxmlpagingcookie,Microsoft.Dynamics.CRM.morerecords\"",
-                )
+                .header("Prefer", FETCH_ANNOTATIONS)
                 .send()
                 .await
                 .map_err(|e| format!("Request failed: {e}"))?;
@@ -225,10 +228,7 @@ impl ServiceClient {
             .get(&url)
             .bearer_auth(&self.token)
             .header("Accept", "application/json")
-            .header(
-                "Prefer",
-                "odata.include-annotations=\"Microsoft.Dynamics.CRM.fetchxmlpagingcookie,Microsoft.Dynamics.CRM.morerecords\"",
-            )
+            .header("Prefer", FETCH_ANNOTATIONS)
             .send()
             .await
             .map_err(|e| format!("Request failed: {e}"))?;
@@ -288,7 +288,7 @@ impl ServiceClient {
     ) -> Result<Vec<EntityAttribute>, std::string::String> {
         let logical = logical_name.replace('\'', "''");
         let url = format!(
-            "{}/api/data/v9.2/EntityDefinitions(LogicalName='{}')/Attributes?$select=LogicalName,SchemaName,AttributeType,IsCustomAttribute,IsValidODataAttribute,IsValidForRead&$filter=IsValidODataAttribute eq true and IsValidForRead eq true",
+            "{}/api/data/v9.2/EntityDefinitions(LogicalName='{}')/Attributes?$select=LogicalName,SchemaName,AttributeType,IsCustomAttribute,IsValidODataAttribute,IsValidForRead,IsValidForUpdate&$filter=IsValidForRead eq true",
             self.base_url, logical
         );
 

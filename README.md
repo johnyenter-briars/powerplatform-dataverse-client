@@ -88,20 +88,24 @@ async fn main() -> Result<(), String> {
 | OData query syntax (non-FetchXML) | ❌ |
 | Expanded navigation properties | ❌ |
 
+FetchXML retrieval requests formatted-value and lookup logical-name annotations so typed values can preserve Dataverse labels and polymorphic lookup targets.
+
 ## Data Types
 
 | Data Type | Supported | Rust Type |
 | --- | --- | --- |
 | `Int` | ✅ | `Value::Int(i64)` |
-| `Float` | ✅ | `Value::Float(f64)` |
+| `Float` / floating point number | ✅ | `Value::Float(f64)` |
 | `String` | ✅ | `Value::String(String)` |
 | `Boolean` | ✅ | `Value::Boolean(bool)` |
 | `Null` | ✅ | `Value::Null` |
 | GUID / Entity ID | ❌ | N/A |
-| Date/time | ❌ | N/A |
-| Option sets / labeled values | ❌ | N/A |
-| Money | ❌ | N/A |
-| Lookups / entity references | ❌ | N/A |
+| Date/time | ✅ | `Value::DateTime(DateTimeValue { value: String, formatted: Option<String> })` |
+| Option sets / labeled values | ✅ | `Value::OptionSet(OptionSetValue { value: i64, name: Option<String> })` |
+| Multi-select option sets | ✅ | `Value::MultiSelectOptionSet(MultiSelectOptionSetValue { values: Vec<i64>, names: Vec<String> })` |
+| Money | ✅ | `Value::Money(MoneyValue { value: f64, formatted: Option<String> })` |
+| Lookups / entity references | ✅ | `Value::EntityReference(EntityReference { id: Uuid, logical_name: String, name: Option<String> })` |
+| Polymorphic lookups | ✅ | `Value::EntityReference(EntityReference { id: Uuid, logical_name: String, name: Option<String> })` |
 | Aliased values | ❌ | N/A |
 | Complex types | ❌ | N/A |
 | Collections / arrays | ❌ | N/A |

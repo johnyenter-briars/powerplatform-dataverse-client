@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// Dataverse entity definition metadata.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct EntityDefinition {
     /// OData context metadata.
     #[serde(rename = "@odata.context")]
