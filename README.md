@@ -2,11 +2,11 @@
 
 Unofficial Rust sdk for the Microsoft Dataverse (Power Platform) Web API. 
 
-Currently in use as the backend for [Queryverse](github.com/johnyenter-briars/queryverse) - the Dataverse SQL client.
+Currently in use as the backend for [Queryverse](https://github.com/johnyenter-briars/queryverse) - the Dataverse SQL client.
 
 The **long term** goal for this project is feature parity with the [Microsoft.PowerPlatform.Dataverse.Client](https://www.nuget.org/packages/Microsoft.PowerPlatform.Dataverse.Client).
 
-The **short term** goal is to provide Rust programs a frictionless, powerful, and fast method of communication with Dataverse.
+The **short term** goal is to provide Rust programs a frictionless, powerful, simple, and fast method of communication with Dataverse.
 
 ## Quick Start
 
