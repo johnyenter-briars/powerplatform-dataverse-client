@@ -6,7 +6,7 @@ Currently in use as the backend for [Queryverse](https://github.com/johnyenter-b
 
 The **long term** goal for this project is feature parity with the [Microsoft.PowerPlatform.Dataverse.Client](https://www.nuget.org/packages/Microsoft.PowerPlatform.Dataverse.Client).
 
-The **short term** goal is to provide Rust programs a frictionless, powerful, and fast method of communication with Dataverse.
+The **short term** goal is to provide Rust programs a frictionless, powerful, simple, and fast method of communication with Dataverse.
 
 ## Quick Start
 
