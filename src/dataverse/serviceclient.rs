@@ -14,7 +14,7 @@ use crate::dataverse::parse::{
     extract_paging_cookie, parse_entities_from_response, parse_more_records,
     parse_record_count_from_response,
 };
-use crate::dataverse::writeoptions::WriteOperationOptions;
+use crate::dataverse::requestparameters::RequestParameters;
 
 const ROW_NUMBER_ATTRIBUTE: &str = "__rownum";
 const AGGREGATE_PAGE_SIZE: i32 = 5000;
@@ -324,22 +324,17 @@ impl ServiceClient {
         id: &str,
         attributes: &HashMap<std::string::String, Value>,
     ) -> Result<(), std::string::String> {
-        self.update_entity_with_options(
-            entity_set,
-            id,
-            attributes,
-            &WriteOperationOptions::default(),
-        )
-        .await
+        self.update_entity_with_options(entity_set, id, attributes, &RequestParameters::default())
+            .await
     }
 
-    /// Update a single entity record by ID with Dataverse write options.
+    /// Update a single entity record by ID with Dataverse request parameters.
     pub async fn update_entity_with_options(
         &self,
         entity_set: &str,
         id: &str,
         attributes: &HashMap<std::string::String, Value>,
-        options: &WriteOperationOptions,
+        options: &RequestParameters,
     ) -> Result<(), std::string::String> {
         let trimmed = id.trim_matches(|ch| ch == '{' || ch == '}');
         let url = format!(
@@ -376,17 +371,31 @@ impl ServiceClient {
         entity_set: &str,
         id: &str,
     ) -> Result<(), std::string::String> {
+        self.delete_entity_with_options(entity_set, id, &RequestParameters::default())
+            .await
+    }
+
+    /// Delete a single entity record by ID with Dataverse request parameters.
+    pub async fn delete_entity_with_options(
+        &self,
+        entity_set: &str,
+        id: &str,
+        options: &RequestParameters,
+    ) -> Result<(), std::string::String> {
         let trimmed = id.trim_matches(|ch| ch == '{' || ch == '}');
         let url = format!(
             "{}/api/data/v9.2/{}({})",
             self.base_url, entity_set, trimmed
         );
 
-        let resp = self
+        let request = self
             .client
             .delete(&url)
             .bearer_auth(&self.token)
-            .header("Accept", "application/json")
+            .header("Accept", "application/json");
+
+        let resp = options
+            .apply(request)
             .send()
             .await
             .map_err(|e| format!("Request failed: {e}"))?;
