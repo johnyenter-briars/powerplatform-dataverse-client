@@ -4,3 +4,4 @@ pub mod entitydefinition;
 pub mod fetchxml;
 pub mod parse;
 pub mod serviceclient;
+pub mod writeoptions;

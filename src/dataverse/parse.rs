@@ -67,8 +67,8 @@ pub(crate) fn parse_entities_from_response(
                     primary_id_key, entity_set
                 )
             })?;
-        let id = Uuid::parse_str(id_value)
-            .map_err(|_| "Invalid response from Dataverse".to_string())?;
+        let id =
+            Uuid::parse_str(id_value).map_err(|_| "Invalid response from Dataverse".to_string())?;
 
         let name = record
             .get("name")
@@ -244,8 +244,7 @@ fn infer_logical_name(entity_set: &str) -> std::string::String {
         return format!("{}y", &normalized[..normalized.len() - 3]);
     }
 
-    if ends_with_any(&normalized, &["ses", "xes", "zes", "ches", "shes"]) && normalized.len() > 2
-    {
+    if ends_with_any(&normalized, &["ses", "xes", "zes", "ches", "shes"]) && normalized.len() > 2 {
         return normalized[..normalized.len() - 2].to_string();
     }
 
