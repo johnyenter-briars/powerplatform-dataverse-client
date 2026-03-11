@@ -3,5 +3,5 @@ pub mod entityattribute;
 pub mod entitydefinition;
 pub mod fetchxml;
 pub mod parse;
+pub mod requestparameters;
 pub mod serviceclient;
-pub mod writeoptions;
