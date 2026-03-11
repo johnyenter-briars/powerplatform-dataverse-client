@@ -90,10 +90,11 @@ async fn main() -> Result<(), String> {
 - `update_entity`
 - `update_entity_with_options`
 - `delete_entity`
+- `delete_entity_with_options`
 
 ## RequestParameters
 
-Use `RequestParameters` with `update_entity_with_options` to send optional Dataverse request headers on create and update operations.
+Use `RequestParameters` with `update_entity_with_options` and `delete_entity_with_options` to send optional Dataverse request headers on create, update, and delete operations.
 
 ```rust
 use powerplatform_dataverse_client::dataverse::requestparameters::RequestParameters;

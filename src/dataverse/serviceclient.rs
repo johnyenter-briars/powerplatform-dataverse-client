@@ -371,17 +371,31 @@ impl ServiceClient {
         entity_set: &str,
         id: &str,
     ) -> Result<(), std::string::String> {
+        self.delete_entity_with_options(entity_set, id, &RequestParameters::default())
+            .await
+    }
+
+    /// Delete a single entity record by ID with Dataverse request parameters.
+    pub async fn delete_entity_with_options(
+        &self,
+        entity_set: &str,
+        id: &str,
+        options: &RequestParameters,
+    ) -> Result<(), std::string::String> {
         let trimmed = id.trim_matches(|ch| ch == '{' || ch == '}');
         let url = format!(
             "{}/api/data/v9.2/{}({})",
             self.base_url, entity_set, trimmed
         );
 
-        let resp = self
+        let request = self
             .client
             .delete(&url)
             .bearer_auth(&self.token)
-            .header("Accept", "application/json")
+            .header("Accept", "application/json");
+
+        let resp = options
+            .apply(request)
             .send()
             .await
             .map_err(|e| format!("Request failed: {e}"))?;
