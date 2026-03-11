@@ -8,6 +8,31 @@ The **long term** goal for this project is feature parity with the [Microsoft.Po
 
 The **short term** goal is to provide Rust programs a frictionless, powerful, simple, and fast method of communication with Dataverse.
 
+## Features
+
+| Feature | Supported |
+| --- | --- |
+| Client-credentials auth | ✅ |
+| Authorization code / password grant token exchange | ❌ |
+| Automatic token refresh (auth code flow) | ❌ |
+| FetchXML retrieval | ✅ |
+| FetchXML paging | ✅ |
+| FetchXML count helper | ✅ |
+| Entity definitions metadata | ✅ |
+| Entity attributes metadata | ✅ |
+| Entity identity fields (id/logical/name via convention) | ✅ |
+| Update entity by ID | ✅ |
+| Delete entity by ID | ✅ |
+| Bypass Custom Logic params | ✅ |
+| Create entity | ❌ |
+| Retrieve entity by ID | ❌ |
+| Entity multi-identity fields | ❌ |
+| Batch operations | ❌ |
+| Retry/backoff | ❌ |
+| Request / Response Objects (Replicating the C# SDK) | ❌ |
+| OData query syntax (non-FetchXML) | ❌ |
+| Expanded navigation properties | ❌ |
+
 ## Quick Start
 
 ```rust
@@ -63,31 +88,31 @@ async fn main() -> Result<(), String> {
 - `list_entity_definitions`
 - `list_entity_attributes`
 - `update_entity`
+- `update_entity_with_options`
 - `delete_entity`
 
-## Features
+## RequestParameters
 
-| Feature | Supported |
-| --- | --- |
-| Client-credentials auth | ✅ |
-| Authorization code / password grant token exchange | ❌ |
-| Automatic token refresh (auth code flow) | ❌ |
-| FetchXML retrieval | ✅ |
-| FetchXML paging | ✅ |
-| FetchXML count helper | ✅ |
-| Entity definitions metadata | ✅ |
-| Entity attributes metadata | ✅ |
-| Entity identity fields (id/logical/name via convention) | ✅ |
-| Update entity by ID | ✅ |
-| Delete entity by ID | ✅ |
-| Create entity | ❌ |
-| Retrieve entity by ID | ❌ |
-| Entity multi-identity fields | ❌ |
-| Batch operations | ❌ |
-| Retry/backoff | ❌ |
-| Request / Response Objects (Replicating the C# SDK) | ❌ |
-| OData query syntax (non-FetchXML) | ❌ |
-| Expanded navigation properties | ❌ |
+Use `RequestParameters` with `update_entity_with_options` to send optional Dataverse request headers on create and update operations.
+
+```rust
+use powerplatform_dataverse_client::dataverse::requestparameters::RequestParameters;
+
+let request_parameters = RequestParameters {
+    bypass_business_logic_execution_custom_sync: true,
+    bypass_business_logic_execution_custom_async: false,
+    bypass_custom_plugin_execution: false,
+    suppress_callback_registration_expander_job: true,
+};
+```
+
+| Request Parameter | Header | Values | Status |
+| --- | --- | --- | --- |
+| `BypassBusinessLogicExecution` | `MSCRM.BypassBusinessLogicExecution` | `CustomSync`, `CustomAsync`, `CustomSync,CustomAsync` | ✅ |
+| `BypassBusinessLogicExecutionStepIds` | `MSCRM.BypassBusinessLogicExecutionStepIds` | Comma-separated plug-in step registration IDs | ⏳ TODO |
+| `BypassCustomPluginExecution` | `MSCRM.BypassCustomPluginExecution` | `true` | ✅ |
+| `SuppressCallbackRegistrationExpanderJob` | `MSCRM.SuppressCallbackRegistrationExpanderJob` | `true` | ✅ |
+
 
 ## Data Types
 
