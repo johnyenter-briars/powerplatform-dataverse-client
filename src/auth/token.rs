@@ -2,8 +2,11 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use base64::Engine;
+
 use crate::auth::credentials::{
-    fetch_client_credentials_token_with_expiry, refresh_authorization_token,
+    fetch_client_credentials_token_with_expiry, fetch_device_code_token_from_parts,
+    parse_device_code_connection_string,
 };
 
 const REFRESH_SKEW_SECS: u64 = 300;
@@ -31,22 +34,24 @@ pub enum AuthConfig {
         /// OAuth scope string.
         scope: String,
     },
-    /// Authorization code flow configuration.
-    AuthorizationCode {
+    /// Device code flow configuration.
+    DeviceCode {
         /// Azure AD client ID.
         client_id: String,
-        /// Azure AD client secret.
-        client_secret: String,
+        /// Dataverse environment URL.
+        dataverse_url: String,
         /// Azure AD tenant ID.
         tenant_id: String,
-        /// OAuth scope string.
-        scope: String,
-        /// Current access token.
-        access_token: String,
-        /// Refresh token for renewing the access token.
-        refresh_token: String,
-        /// Expiration time as seconds since epoch.
-        expires_at: Option<u64>,
+        /// Optional redirect URI from the original connection string.
+        redirect_uri: Option<String>,
+        /// Optional token cache path from the original connection string.
+        token_cache_store_path: Option<String>,
+        /// Optional login prompt from the original connection string.
+        login_prompt: Option<String>,
+        /// Optional username from the original connection string.
+        username: Option<String>,
+        /// Optional password from the original connection string.
+        password: Option<String>,
     },
 }
 
@@ -71,8 +76,85 @@ pub fn parse_expires_at(value: &str) -> Option<u64> {
     value.trim().parse::<u64>().ok()
 }
 
-/// Fetch a fresh access token for the provided auth configuration.
-pub async fn fetch_token(auth: &AuthConfig) -> Result<CachedToken, String> {
+fn parse_jwt_expiry(access_token: &str) -> Option<u64> {
+    let payload = access_token.split('.').nth(1)?;
+    let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(payload)
+        .ok()?;
+    let json: serde_json::Value = serde_json::from_slice(&decoded).ok()?;
+    json.get("exp").and_then(|value| value.as_u64())
+}
+
+fn parse_connection_string_values(
+    connection_string: &str,
+) -> Result<HashMap<String, String>, String> {
+    let mut values = HashMap::new();
+
+    for segment in connection_string.split(';') {
+        let trimmed = segment.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        let Some((key, value)) = trimmed.split_once('=') else {
+            return Err(format!("Invalid connection string segment: {trimmed}"));
+        };
+
+        values.insert(key.trim().to_ascii_lowercase(), value.trim().to_string());
+    }
+
+    Ok(values)
+}
+
+fn parse_connection_string_auth_config(connection_string: &str) -> Result<AuthConfig, String> {
+    let values = parse_connection_string_values(connection_string)?;
+
+    let url = values
+        .get("url")
+        .cloned()
+        .filter(|value| !value.trim().is_empty())
+        .ok_or("Connection string missing Url".to_string())?;
+
+    let client_id = values
+        .get("clientid")
+        .or_else(|| values.get("appid"))
+        .cloned()
+        .filter(|value| !value.trim().is_empty());
+    let client_secret = values
+        .get("clientsecret")
+        .cloned()
+        .filter(|value| !value.trim().is_empty());
+    let tenant_id = values
+        .get("tenantid")
+        .cloned()
+        .filter(|value| !value.trim().is_empty());
+
+    if let (Some(client_id), Some(client_secret), Some(tenant_id)) =
+        (client_id.clone(), client_secret, tenant_id.clone())
+    {
+        return Ok(AuthConfig::ClientCredentials {
+            client_id,
+            client_secret,
+            tenant_id,
+            scope: format!("{}/.default", url.trim_end_matches('/')),
+        });
+    }
+
+    let parsed = parse_device_code_connection_string(connection_string)?;
+
+    Ok(AuthConfig::DeviceCode {
+        client_id: parsed.client_id,
+        dataverse_url: parsed.dataverse_url,
+        tenant_id: parsed.tenant_id,
+        redirect_uri: parsed.redirect_uri,
+        token_cache_store_path: parsed.token_cache_store_path,
+        login_prompt: parsed.login_prompt,
+        username: parsed.username,
+        password: parsed.password,
+    })
+}
+
+async fn fetch_token_for_config(auth: &AuthConfig) -> Result<CachedToken, String> {
     match auth {
         AuthConfig::ClientCredentials {
             client_id,
@@ -93,42 +175,27 @@ pub async fn fetch_token(auth: &AuthConfig) -> Result<CachedToken, String> {
                 expires_at: Some(token.expires_at),
             })
         }
-        AuthConfig::AuthorizationCode {
+        AuthConfig::DeviceCode {
             client_id,
-            client_secret,
+            dataverse_url,
             tenant_id,
-            scope,
-            refresh_token,
             ..
         } => {
-            todo!("#11");
-
-            if client_id.trim().is_empty()
-                || client_secret.trim().is_empty()
-                || tenant_id.trim().is_empty()
-                || scope.trim().is_empty()
-            {
-                return Err(
-                    "Authorization code connection cannot refresh without client credentials."
-                        .to_string(),
-                );
-            }
-
-            let token = refresh_authorization_token(
-                client_id,
-                client_secret,
-                tenant_id,
-                scope,
-                refresh_token,
-            )
-            .await?;
+            let access_token =
+                fetch_device_code_token_from_parts(client_id, dataverse_url, tenant_id).await?;
 
             Ok(CachedToken {
-                access_token: token.access_token,
-                expires_at: Some(token.expires_at),
+                expires_at: parse_jwt_expiry(&access_token),
+                access_token,
             })
         }
     }
+}
+
+/// Fetch a fresh access token from a Dataverse-style device-code connection string.
+pub async fn fetch_token(connection_string: &str) -> Result<CachedToken, String> {
+    let auth = parse_connection_string_auth_config(connection_string)?;
+    fetch_token_for_config(&auth).await
 }
 
 /// Populate a token cache with a valid token for the given key.
@@ -137,27 +204,7 @@ pub async fn prime_token_cache<K: Eq + Hash + Clone>(
     cache: &mut HashMap<K, CachedToken>,
     key: K,
 ) -> Result<(), String> {
-    let token = match auth {
-        AuthConfig::ClientCredentials { .. } => fetch_token(auth).await?,
-        AuthConfig::AuthorizationCode {
-            access_token,
-            expires_at,
-            ..
-        } => {
-            todo!("#11");
-            let cached = CachedToken {
-                access_token: access_token.clone(),
-                expires_at: *expires_at,
-            };
-
-            if access_token.trim().is_empty() || is_expiring_soon(*expires_at) {
-                fetch_token(auth).await?
-            } else {
-                cached
-            }
-        }
-    };
-
+    let token = fetch_token_for_config(auth).await?;
     cache.insert(key, token);
     Ok(())
 }
@@ -174,7 +221,7 @@ pub async fn get_access_token<K: Eq + Hash + Clone>(
         }
     }
 
-    let refreshed = fetch_token(auth).await?;
+    let refreshed = fetch_token_for_config(auth).await?;
     let access_token = refreshed.access_token.clone();
     cache.insert(key.clone(), refreshed);
     Ok(access_token)

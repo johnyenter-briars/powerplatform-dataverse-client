@@ -9,13 +9,7 @@ pub struct Secrets {
     #[serde(default)]
     pub device_code_connection_string: String,
     #[serde(default)]
-    pub client_id: String,
-    #[serde(default)]
-    pub client_secret: String,
-    #[serde(default)]
-    pub scope: String,
-    #[serde(default)]
-    pub tenant_id: String,
+    pub client_credentials_connection_string: String,
 }
 
 pub fn load_secrets() -> Result<Secrets, String> {

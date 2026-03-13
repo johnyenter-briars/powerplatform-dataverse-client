@@ -670,6 +670,7 @@ dependencies = [
 name = "powerplatform-dataverse-client"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "log",
  "reqwest",
  "serde",

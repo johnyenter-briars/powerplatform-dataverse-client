@@ -25,10 +25,15 @@ pub struct ClientCredentialsToken {
     pub expires_at: u64,
 }
 
-struct DeviceCodeConnectionString {
-    client_id: String,
-    dataverse_url: String,
-    tenant_id: String,
+pub(crate) struct DeviceCodeConnectionString {
+    pub(crate) client_id: String,
+    pub(crate) dataverse_url: String,
+    pub(crate) tenant_id: String,
+    pub(crate) redirect_uri: Option<String>,
+    pub(crate) token_cache_store_path: Option<String>,
+    pub(crate) login_prompt: Option<String>,
+    pub(crate) username: Option<String>,
+    pub(crate) password: Option<String>,
 }
 
 struct DeviceCodeStart {
@@ -121,15 +126,23 @@ pub async fn validate_client_credentials(
 /// Fetch an access token using the OAuth device code flow from a Dataverse-style connection string.
 pub async fn fetch_device_code_token(connection_string: &str) -> Result<String, String> {
     let config = parse_device_code_connection_string(connection_string)?;
-    let scope = build_dataverse_device_code_scope(&config.dataverse_url);
+    fetch_device_code_token_from_parts(&config.client_id, &config.dataverse_url, &config.tenant_id)
+        .await
+}
+
+pub(crate) async fn fetch_device_code_token_from_parts(
+    client_id: &str,
+    dataverse_url: &str,
+    tenant_id: &str,
+) -> Result<String, String> {
+    let scope = build_dataverse_device_code_scope(dataverse_url);
     let client = Client::new();
-    let start =
-        start_device_code_flow(&client, &config.tenant_id, &config.client_id, &scope).await?;
+    let start = start_device_code_flow(&client, tenant_id, client_id, &scope).await?;
 
     poll_device_code_token(
         &client,
-        &config.tenant_id,
-        &config.client_id,
+        tenant_id,
+        client_id,
         &scope,
         &start.device_code,
         start.interval,
@@ -279,7 +292,7 @@ pub async fn refresh_authorization_token(
     })
 }
 
-fn parse_device_code_connection_string(
+pub(crate) fn parse_device_code_connection_string(
     connection_string: &str,
 ) -> Result<DeviceCodeConnectionString, String> {
     let mut values = HashMap::new();
@@ -318,6 +331,26 @@ fn parse_device_code_connection_string(
         .cloned()
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| "organizations".to_string());
+    let redirect_uri = values
+        .get("redirecturi")
+        .cloned()
+        .filter(|value| !value.trim().is_empty());
+    let token_cache_store_path = values
+        .get("tokencachestorepath")
+        .cloned()
+        .filter(|value| !value.trim().is_empty());
+    let login_prompt = values
+        .get("loginprompt")
+        .cloned()
+        .filter(|value| !value.trim().is_empty());
+    let username = values
+        .get("username")
+        .cloned()
+        .filter(|value| !value.trim().is_empty());
+    let password = values
+        .get("password")
+        .cloned()
+        .filter(|value| !value.trim().is_empty());
 
     if client_id.trim().is_empty() {
         return Err("Connection string AppId was empty".to_string());
@@ -331,6 +364,11 @@ fn parse_device_code_connection_string(
         client_id,
         dataverse_url: dataverse_url.trim_end_matches('/').to_string(),
         tenant_id,
+        redirect_uri,
+        token_cache_store_path,
+        login_prompt,
+        username,
+        password,
     })
 }
 
