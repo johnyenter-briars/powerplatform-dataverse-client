@@ -43,7 +43,7 @@ use powerplatform_dataverse_client::LogLevel;
 #[tokio::main]
 async fn main() -> Result<(), String> {
     let client = ServiceClient::new(
-        "AuthType=ClientSecret;Url=https://YOUR_ORG.crm.dynamics.com;ClientId=CLIENT_ID;ClientSecret=CLIENT_SECRET;TenantId=TENANT_ID",
+        "AuthType=ClientSecret;Url=https://YOUR_ORG.crm.dynamics.com;ClientId=CLIENT_ID;ClientSecret=CLIENT_SECRET;TenantId=TENANT_ID;TokenCacheStorePath=C:\\MyTokenCache\\token-cache.txt",
         LogLevel::Information,
     )
     .await?;
@@ -140,12 +140,14 @@ cargo run
 
 ```json
 {
-  "device_code_connection_string": "AuthType=OAuth;Url=https://contosotest.crm.dynamics.com;AppId=51f81489-12ee-4a9e-aaae-a2591f45987d;RedirectUri=app://58145B91-0C36-4500-8554-080854F2AC97;LoginPrompt=Auto",
-  "client_credentials_connection_string": "AuthType=ClientSecret;Url=https://contosotest.crm.dynamics.com;ClientId=00000000-0000-0000-0000-000000000000;ClientSecret=YOUR_SECRET;TenantId=YOUR_TENANT_ID"
+  "device_code_connection_string": "AuthType=OAuth;Url=https://contosotest.crm.dynamics.com;AppId=51f81489-12ee-4a9e-aaae-a2591f45987d;RedirectUri=app://58145B91-0C36-4500-8554-080854F2AC97;LoginPrompt=Auto;TokenCacheStorePath=C:\\MyTokenCache",
+  "client_credentials_connection_string": "AuthType=ClientSecret;Url=https://contosotest.crm.dynamics.com;ClientId=00000000-0000-0000-0000-000000000000;ClientSecret=YOUR_SECRET;TenantId=YOUR_TENANT_ID;TokenCacheStorePath=C:\\MyTokenCache\\token-cache.txt"
 }
 ```
 
 When `device_code_connection_string` is set, the sample prints the Microsoft sign-in URL and waits for the browser sign-in to complete before continuing.
+
+If `TokenCacheStorePath` is set to a folder, the client stores `token_cache.txt` in that folder. If it is set to a file path, the client writes the cache JSON to that file directly. If omitted, the client uses `data_local_dir()/powerplatform-dataverse-client/<derived-guid>/token_cache.txt`.
 
 ## Integration Tests
 

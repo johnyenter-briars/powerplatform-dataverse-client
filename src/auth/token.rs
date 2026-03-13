@@ -1,8 +1,12 @@
 use std::collections::HashMap;
+use std::fs;
 use std::hash::Hash;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use base64::Engine;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::auth::credentials::{
     fetch_client_credentials_token_with_expiry, fetch_device_code_token_from_parts,
@@ -20,6 +24,11 @@ pub struct CachedToken {
     pub expires_at: Option<u64>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct TokenCacheFile {
+    access_token: String,
+}
+
 /// Authentication configuration for acquiring Dataverse access tokens.
 #[derive(Clone, Debug)]
 pub enum AuthConfig {
@@ -33,6 +42,8 @@ pub enum AuthConfig {
         tenant_id: String,
         /// OAuth scope string.
         scope: String,
+        /// Optional token cache path from the original connection string.
+        token_cache_store_path: Option<String>,
     },
     /// Device code flow configuration.
     DeviceCode {
@@ -128,6 +139,10 @@ fn parse_connection_string_auth_config(connection_string: &str) -> Result<AuthCo
         .get("tenantid")
         .cloned()
         .filter(|value| !value.trim().is_empty());
+    let token_cache_store_path = values
+        .get("tokencachestorepath")
+        .cloned()
+        .filter(|value| !value.trim().is_empty());
 
     if let (Some(client_id), Some(client_secret), Some(tenant_id)) =
         (client_id.clone(), client_secret, tenant_id.clone())
@@ -137,6 +152,7 @@ fn parse_connection_string_auth_config(connection_string: &str) -> Result<AuthCo
             client_secret,
             tenant_id,
             scope: format!("{}/.default", url.trim_end_matches('/')),
+            token_cache_store_path,
         });
     }
 
@@ -161,6 +177,7 @@ async fn fetch_token_for_config(auth: &AuthConfig) -> Result<CachedToken, String
             client_secret,
             tenant_id,
             scope,
+            ..
         } => {
             let token = fetch_client_credentials_token_with_expiry(
                 client_id,
@@ -195,7 +212,15 @@ async fn fetch_token_for_config(auth: &AuthConfig) -> Result<CachedToken, String
 /// Fetch a fresh access token from a Dataverse-style device-code connection string.
 pub async fn fetch_token(connection_string: &str) -> Result<CachedToken, String> {
     let auth = parse_connection_string_auth_config(connection_string)?;
-    fetch_token_for_config(&auth).await
+    if let Some(cached) = load_cached_token(&auth)? {
+        if !cached.access_token.trim().is_empty() && !is_expiring_soon(cached.expires_at) {
+            return Ok(cached);
+        }
+    }
+
+    let token = fetch_token_for_config(&auth).await?;
+    save_cached_token(&auth, &token)?;
+    Ok(token)
 }
 
 /// Populate a token cache with a valid token for the given key.
@@ -225,4 +250,101 @@ pub async fn get_access_token<K: Eq + Hash + Clone>(
     let access_token = refreshed.access_token.clone();
     cache.insert(key.clone(), refreshed);
     Ok(access_token)
+}
+
+fn load_cached_token(
+    auth: &AuthConfig,
+) -> Result<Option<CachedToken>, String> {
+    let path = resolve_token_cache_file_path(auth)?;
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let contents = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    if contents.trim().is_empty() {
+        return Ok(None);
+    }
+
+    let cache: TokenCacheFile = serde_json::from_str(&contents).map_err(|e| e.to_string())?;
+    if cache.access_token.trim().is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(CachedToken {
+        expires_at: parse_jwt_expiry(&cache.access_token),
+        access_token: cache.access_token,
+    }))
+}
+
+fn save_cached_token(auth: &AuthConfig, token: &CachedToken) -> Result<(), String> {
+    let path = resolve_token_cache_file_path(auth)?;
+    let parent = path
+        .parent()
+        .ok_or("Token cache path did not have a parent directory".to_string())?;
+    fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+
+    let cache = TokenCacheFile {
+        access_token: token.access_token.clone(),
+    };
+    let json = serde_json::to_string_pretty(&cache).map_err(|e| e.to_string())?;
+    fs::write(path, json).map_err(|e| e.to_string())
+}
+
+fn resolve_token_cache_file_path(
+    auth: &AuthConfig,
+) -> Result<PathBuf, String> {
+    if let Some(configured) = configured_token_cache_path(auth) {
+        return normalize_token_cache_path(configured);
+    }
+
+    let base = dirs::data_local_dir().ok_or("Unable to resolve local app data directory")?;
+    let cache_dir = base
+        .join("powerplatform-dataverse-client")
+        // TODO: Make this more deterministic to not cause lots of noise.
+        .join(Uuid::new_v4().to_string());
+    fs::create_dir_all(&cache_dir).map_err(|e| e.to_string())?;
+    Ok(cache_dir.join("token_cache.txt"))
+}
+
+fn configured_token_cache_path(auth: &AuthConfig) -> Option<&str> {
+    match auth {
+        AuthConfig::ClientCredentials {
+            token_cache_store_path,
+            ..
+        } => token_cache_store_path.as_deref(),
+        AuthConfig::DeviceCode {
+            token_cache_store_path,
+            ..
+        } => token_cache_store_path.as_deref(),
+    }
+}
+
+fn normalize_token_cache_path(value: &str) -> Result<PathBuf, String> {
+    let path = PathBuf::from(value);
+
+    if path.exists() {
+        if path.is_dir() {
+            fs::create_dir_all(&path).map_err(|e| e.to_string())?;
+            return Ok(path.join("token_cache.txt"));
+        }
+
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        return Ok(path);
+    }
+
+    if looks_like_file_path(&path) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        return Ok(path);
+    }
+
+    fs::create_dir_all(&path).map_err(|e| e.to_string())?;
+    Ok(path.join("token_cache.txt"))
+}
+
+fn looks_like_file_path(path: &Path) -> bool {
+    path.extension().is_some()
 }
