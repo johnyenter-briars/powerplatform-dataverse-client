@@ -5,10 +5,16 @@ use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct Secrets {
-    pub client_id: String,
-    pub client_secret: String,
-    pub scope: String,
     pub dataverse_url: String,
+    #[serde(default)]
+    pub device_code_connection_string: String,
+    #[serde(default)]
+    pub client_id: String,
+    #[serde(default)]
+    pub client_secret: String,
+    #[serde(default)]
+    pub scope: String,
+    #[serde(default)]
     pub tenant_id: String,
 }
 

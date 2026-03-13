@@ -14,6 +14,7 @@ The **short term** goal is to provide Rust programs a frictionless, powerful, si
 | --- | --- |
 | Client-credentials auth | ✅ |
 | Authorization code / password grant token exchange | ❌ |
+| Device code auth | ✅ |
 | Automatic token refresh (auth code flow) | ❌ |
 | FetchXML retrieval | ✅ |
 | FetchXML paging | ✅ |
@@ -79,6 +80,7 @@ async fn main() -> Result<(), String> {
 ### Authentication
 - `fetch_client_credentials_token`
 - `fetch_client_credentials_token_with_expiry`
+- `fetch_device_code_token`
 - `validate_client_credentials`
 - `exchange_authorization_code` (authorization code or password grant)
 
@@ -142,6 +144,21 @@ cd samples/<sample-name>
 cp secrets.example.json secrets.json #populate secrets.json with auth information
 cargo run
 ```
+
+`hello-dataverse` also supports a Dataverse-style device-code connection string in `secrets.json`:
+
+```json
+{
+  "dataverse_url": "https://contosotest.crm.dynamics.com",
+  "device_code_connection_string": "AuthType=OAuth;Url=https://contosotest.crm.dynamics.com;AppId=51f81489-12ee-4a9e-aaae-a2591f45987d;RedirectUri=app://58145B91-0C36-4500-8554-080854F2AC97;LoginPrompt=Auto",
+  "client_id": "",
+  "client_secret": "",
+  "scope": "",
+  "tenant_id": ""
+}
+```
+
+When `device_code_connection_string` is set, the sample prints the Microsoft sign-in URL and waits for the browser sign-in to complete before continuing.
 
 ## Integration Tests
 
