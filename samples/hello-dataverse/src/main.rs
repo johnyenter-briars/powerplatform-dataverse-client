@@ -1,7 +1,6 @@
 mod config;
 mod scenarios;
 
-use powerplatform_dataverse_client::auth::token::fetch_token as fetch_connection_string_token;
 use powerplatform_dataverse_client::dataverse::serviceclient::ServiceClient;
 use powerplatform_dataverse_client::LogLevel;
 
@@ -15,20 +14,21 @@ async fn main() -> Result<(), String> {
     if !secrets.device_code_connection_string.trim().is_empty() {
         attempted = true;
         println!("Authenticating with connection string...");
-        let token = fetch_connection_string_token(&secrets.device_code_connection_string)
-            .await?
-            .access_token;
-        run_scenarios("connection string", &secrets.dataverse_url, &token).await?;
+        let client =
+            ServiceClient::new(&secrets.device_code_connection_string, LogLevel::Information)
+                .await?;
+        run_scenarios("connection string", &client).await?;
     }
 
     if !secrets.client_credentials_connection_string.trim().is_empty() {
         attempted = true;
         println!("Authenticating with client-credentials connection string...");
-        let token = fetch_connection_string_token(&secrets.client_credentials_connection_string)
-            .await?
-            .access_token;
-        run_scenarios("client credentials connection string", &secrets.dataverse_url, &token)
-            .await?;
+        let client = ServiceClient::new(
+            &secrets.client_credentials_connection_string,
+            LogLevel::Information,
+        )
+        .await?;
+        run_scenarios("client credentials connection string", &client).await?;
     }
 
     if !attempted {
@@ -41,10 +41,9 @@ async fn main() -> Result<(), String> {
     Ok(())
 }
 
-async fn run_scenarios(label: &str, dataverse_url: &str, token: &str) -> Result<(), String> {
+async fn run_scenarios(label: &str, client: &ServiceClient) -> Result<(), String> {
     println!("Running sample with {label}...");
-    let client = ServiceClient::new(dataverse_url, token, LogLevel::Information);
-    scenarios::metadata::run(&client).await?;
-    scenarios::fetchxml::run(&client).await?;
+    scenarios::metadata::run(client).await?;
+    scenarios::fetchxml::run(client).await?;
     Ok(())
 }

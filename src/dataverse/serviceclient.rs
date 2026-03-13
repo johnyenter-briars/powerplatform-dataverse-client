@@ -5,6 +5,7 @@ use reqwest::Client;
 use serde_json::Value;
 
 use crate::LogLevel;
+use crate::auth::token::fetch_token;
 use crate::dataverse::entity::Entity;
 use crate::dataverse::entity::Value::Int;
 use crate::dataverse::entityattribute::EntityAttribute;
@@ -34,14 +35,17 @@ pub struct ServiceClient {
 }
 
 impl ServiceClient {
-    /// Create a new client for the given base URL and access token.
-    pub fn new(base_url: &str, token: &str, log_level: LogLevel) -> Self {
-        Self {
+    /// Create a new client from a Dataverse connection string.
+    pub async fn new(connection_string: &str, log_level: LogLevel) -> Result<Self, String> {
+        let base_url = parse_connection_string_url(connection_string)?;
+        let token = fetch_token(connection_string).await?;
+
+        Ok(Self {
             client: Client::new(),
-            base_url: base_url.trim_end_matches('/').to_string(),
-            token: token.to_string(),
+            base_url,
+            token: token.access_token,
             log_level,
-        }
+        })
     }
 
     /// Retrieve multiple records by FetchXML, handling paging when needed.
@@ -408,4 +412,28 @@ impl ServiceClient {
 
         Ok(())
     }
+}
+
+fn parse_connection_string_url(connection_string: &str) -> Result<String, String> {
+    for segment in connection_string.split(';') {
+        let trimmed = segment.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        let Some((key, value)) = trimmed.split_once('=') else {
+            return Err(format!("Invalid connection string segment: {trimmed}"));
+        };
+
+        if key.trim().eq_ignore_ascii_case("url") {
+            let url = value.trim().trim_end_matches('/').to_string();
+            if url.is_empty() {
+                return Err("Connection string Url was empty".to_string());
+            }
+
+            return Ok(url);
+        }
+    }
+
+    Err("Connection string missing Url".to_string())
 }

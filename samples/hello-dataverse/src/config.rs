@@ -5,7 +5,6 @@ use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct Secrets {
-    pub dataverse_url: String,
     #[serde(default)]
     pub device_code_connection_string: String,
     #[serde(default)]

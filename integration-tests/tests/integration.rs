@@ -1,4 +1,3 @@
-use powerplatform_dataverse_client::auth::credentials::fetch_client_credentials_token;
 use powerplatform_dataverse_client::dataverse::serviceclient::ServiceClient;
 use powerplatform_dataverse_client::LogLevel;
 
@@ -8,20 +7,7 @@ const DEBUG_OUTPUT: bool = false;
 
 async fn create_client() -> Result<ServiceClient, String> {
     let secrets = load_secrets()?;
-
-    let token = fetch_client_credentials_token(
-        &secrets.client_id,
-        &secrets.client_secret,
-        &secrets.tenant_id,
-        &secrets.scope,
-    )
-    .await?;
-
-    Ok(ServiceClient::new(
-        &secrets.dataverse_url,
-        &token,
-        LogLevel::Information,
-    ))
+    ServiceClient::new(&secrets.connection_string, LogLevel::Information).await
 }
 
 #[tokio::test]

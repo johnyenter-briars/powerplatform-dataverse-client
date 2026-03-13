@@ -37,25 +37,16 @@ The **short term** goal is to provide Rust programs a frictionless, powerful, si
 ## Quick Start
 
 ```rust
-use powerplatform_dataverse_client::auth::credentials::fetch_client_credentials_token;
 use powerplatform_dataverse_client::dataverse::serviceclient::ServiceClient;
 use powerplatform_dataverse_client::LogLevel;
 
 #[tokio::main]
 async fn main() -> Result<(), String> {
-    let token = fetch_client_credentials_token(
-        "CLIENT_ID",
-        "CLIENT_SECRET",
-        "TENANT_ID",
-        "https://YOUR_ORG.crm.dynamics.com/.default",
+    let client = ServiceClient::new(
+        "AuthType=ClientSecret;Url=https://YOUR_ORG.crm.dynamics.com;ClientId=CLIENT_ID;ClientSecret=CLIENT_SECRET;TenantId=TENANT_ID",
+        LogLevel::Information,
     )
     .await?;
-
-    let client = ServiceClient::new(
-        "https://YOUR_ORG.crm.dynamics.com",
-        &token,
-        LogLevel::Information,
-    );
 
     let fetchxml = r#"
         <fetch top="5">
@@ -149,12 +140,8 @@ cargo run
 
 ```json
 {
-  "dataverse_url": "https://contosotest.crm.dynamics.com",
   "device_code_connection_string": "AuthType=OAuth;Url=https://contosotest.crm.dynamics.com;AppId=51f81489-12ee-4a9e-aaae-a2591f45987d;RedirectUri=app://58145B91-0C36-4500-8554-080854F2AC97;LoginPrompt=Auto",
-  "client_id": "",
-  "client_secret": "",
-  "scope": "",
-  "tenant_id": ""
+  "client_credentials_connection_string": "AuthType=ClientSecret;Url=https://contosotest.crm.dynamics.com;ClientId=00000000-0000-0000-0000-000000000000;ClientSecret=YOUR_SECRET;TenantId=YOUR_TENANT_ID"
 }
 ```
 
