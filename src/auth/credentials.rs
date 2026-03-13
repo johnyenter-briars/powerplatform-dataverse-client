@@ -29,11 +29,7 @@ pub(crate) struct DeviceCodeConnectionString {
     pub(crate) client_id: String,
     pub(crate) dataverse_url: String,
     pub(crate) tenant_id: String,
-    pub(crate) redirect_uri: Option<String>,
     pub(crate) token_cache_store_path: Option<String>,
-    pub(crate) login_prompt: Option<String>,
-    pub(crate) username: Option<String>,
-    pub(crate) password: Option<String>,
 }
 
 struct DeviceCodeStart {
@@ -229,67 +225,13 @@ pub async fn exchange_authorization_code(
 
 /// Refresh an authorization code token using a refresh token.
 pub async fn refresh_authorization_token(
-    client_id: &str,
-    client_secret: &str,
-    tenant_id: &str,
-    scope: &str,
-    refresh_token: &str,
+    _client_id: &str,
+    _client_secret: &str,
+    _tenant_id: &str,
+    _scope: &str,
+    _refresh_token: &str,
 ) -> Result<TokenExchange, String> {
     todo!("#11");
-    let client = Client::new();
-    let token_url = format!(
-        "https://login.microsoftonline.com/{}/oauth2/v2.0/token",
-        tenant_id
-    );
-
-    let mut params = HashMap::new();
-    params.insert("client_id", client_id);
-    params.insert("client_secret", client_secret);
-    params.insert("scope", scope);
-    params.insert("grant_type", "refresh_token");
-    params.insert("refresh_token", refresh_token);
-
-    let resp = client
-        .post(&token_url)
-        .form(&params)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if !resp.status().is_success() {
-        let body = resp.text().await.unwrap_or_default();
-        return Err(body);
-    }
-
-    let json: Value = resp.json().await.map_err(|e| e.to_string())?;
-
-    let access_token = json
-        .get("access_token")
-        .and_then(|v| v.as_str())
-        .ok_or("No access_token in response")?
-        .to_string();
-
-    let refreshed_token = json
-        .get("refresh_token")
-        .and_then(|v| v.as_str())
-        .unwrap_or(refresh_token)
-        .to_string();
-
-    let expires_in = json
-        .get("expires_in")
-        .and_then(|v| v.as_u64())
-        .ok_or("No expires_in in response")?;
-
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|e| e.to_string())?
-        .as_secs();
-
-    Ok(TokenExchange {
-        access_token,
-        refresh_token: refreshed_token,
-        expires_at: now + expires_in,
-    })
 }
 
 pub(crate) fn parse_device_code_connection_string(
@@ -331,24 +273,8 @@ pub(crate) fn parse_device_code_connection_string(
         .cloned()
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| "organizations".to_string());
-    let redirect_uri = values
-        .get("redirecturi")
-        .cloned()
-        .filter(|value| !value.trim().is_empty());
     let token_cache_store_path = values
         .get("tokencachestorepath")
-        .cloned()
-        .filter(|value| !value.trim().is_empty());
-    let login_prompt = values
-        .get("loginprompt")
-        .cloned()
-        .filter(|value| !value.trim().is_empty());
-    let username = values
-        .get("username")
-        .cloned()
-        .filter(|value| !value.trim().is_empty());
-    let password = values
-        .get("password")
         .cloned()
         .filter(|value| !value.trim().is_empty());
 
@@ -364,11 +290,7 @@ pub(crate) fn parse_device_code_connection_string(
         client_id,
         dataverse_url: dataverse_url.trim_end_matches('/').to_string(),
         tenant_id,
-        redirect_uri,
         token_cache_store_path,
-        login_prompt,
-        username,
-        password,
     })
 }
 

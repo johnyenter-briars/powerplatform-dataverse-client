@@ -52,16 +52,8 @@ pub(crate) enum AuthConfig {
         dataverse_url: String,
         /// Azure AD tenant ID.
         tenant_id: String,
-        /// Optional redirect URI from the original connection string.
-        redirect_uri: Option<String>,
         /// Optional token cache path from the original connection string.
         token_cache_store_path: Option<String>,
-        /// Optional login prompt from the original connection string.
-        login_prompt: Option<String>,
-        /// Optional username from the original connection string.
-        username: Option<String>,
-        /// Optional password from the original connection string.
-        password: Option<String>,
     },
 }
 
@@ -79,11 +71,6 @@ pub(crate) fn is_expiring_soon(expires_at: Option<u64>) -> bool {
         return true;
     };
     now_secs() + REFRESH_SKEW_SECS >= exp
-}
-
-/// Parse an expiry timestamp from a string.
-pub(crate) fn parse_expires_at(value: &str) -> Option<u64> {
-    value.trim().parse::<u64>().ok()
 }
 
 fn parse_jwt_expiry(access_token: &str) -> Option<u64> {
@@ -163,11 +150,7 @@ pub(crate) fn parse_connection_string_auth_config(
         client_id: parsed.client_id,
         dataverse_url: parsed.dataverse_url,
         tenant_id: parsed.tenant_id,
-        redirect_uri: parsed.redirect_uri,
         token_cache_store_path: parsed.token_cache_store_path,
-        login_prompt: parsed.login_prompt,
-        username: parsed.username,
-        password: parsed.password,
     })
 }
 
