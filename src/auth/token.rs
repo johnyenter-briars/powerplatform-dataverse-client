@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::fs;
-use std::hash::Hash;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -17,7 +16,7 @@ const REFRESH_SKEW_SECS: u64 = 300;
 
 /// Cached access token and optional expiry.
 #[derive(Clone, Debug)]
-pub struct CachedToken {
+pub(crate) struct CachedToken {
     /// OAuth access token.
     pub access_token: String,
     /// Expiration time as seconds since epoch.
@@ -31,7 +30,7 @@ struct TokenCacheFile {
 
 /// Authentication configuration for acquiring Dataverse access tokens.
 #[derive(Clone, Debug)]
-pub enum AuthConfig {
+pub(crate) enum AuthConfig {
     /// Client credentials (app-only) flow configuration.
     ClientCredentials {
         /// Azure AD client ID.
@@ -75,7 +74,7 @@ fn now_secs() -> u64 {
 }
 
 /// Returns true if the token is missing or nearing expiry.
-pub fn is_expiring_soon(expires_at: Option<u64>) -> bool {
+pub(crate) fn is_expiring_soon(expires_at: Option<u64>) -> bool {
     let Some(exp) = expires_at else {
         return true;
     };
@@ -83,7 +82,7 @@ pub fn is_expiring_soon(expires_at: Option<u64>) -> bool {
 }
 
 /// Parse an expiry timestamp from a string.
-pub fn parse_expires_at(value: &str) -> Option<u64> {
+pub(crate) fn parse_expires_at(value: &str) -> Option<u64> {
     value.trim().parse::<u64>().ok()
 }
 
@@ -117,7 +116,9 @@ fn parse_connection_string_values(
     Ok(values)
 }
 
-fn parse_connection_string_auth_config(connection_string: &str) -> Result<AuthConfig, String> {
+pub(crate) fn parse_connection_string_auth_config(
+    connection_string: &str,
+) -> Result<AuthConfig, String> {
     let values = parse_connection_string_values(connection_string)?;
 
     let url = values
@@ -170,7 +171,7 @@ fn parse_connection_string_auth_config(connection_string: &str) -> Result<AuthCo
     })
 }
 
-async fn fetch_token_for_config(auth: &AuthConfig) -> Result<CachedToken, String> {
+pub(crate) async fn fetch_token_for_config(auth: &AuthConfig) -> Result<CachedToken, String> {
     match auth {
         AuthConfig::ClientCredentials {
             client_id,
@@ -209,52 +210,7 @@ async fn fetch_token_for_config(auth: &AuthConfig) -> Result<CachedToken, String
     }
 }
 
-/// Fetch a fresh access token from a Dataverse-style device-code connection string.
-pub async fn fetch_token(connection_string: &str) -> Result<CachedToken, String> {
-    let auth = parse_connection_string_auth_config(connection_string)?;
-    let cache_path = resolve_token_cache_file_path(&auth)?;
-
-    if let Some(cached) = load_cached_token(&cache_path)? {
-        if !cached.access_token.trim().is_empty() && !is_expiring_soon(cached.expires_at) {
-            return Ok(cached);
-        }
-    }
-
-    let token = fetch_token_for_config(&auth).await?;
-    save_cached_token(&cache_path, &token)?;
-    Ok(token)
-}
-
-/// Populate a token cache with a valid token for the given key.
-pub async fn prime_token_cache<K: Eq + Hash + Clone>(
-    auth: &AuthConfig,
-    cache: &mut HashMap<K, CachedToken>,
-    key: K,
-) -> Result<(), String> {
-    let token = fetch_token_for_config(auth).await?;
-    cache.insert(key, token);
-    Ok(())
-}
-
-/// Return a valid access token from cache or by fetching a new one.
-pub async fn get_access_token<K: Eq + Hash + Clone>(
-    auth: &AuthConfig,
-    cache: &mut HashMap<K, CachedToken>,
-    key: &K,
-) -> Result<String, String> {
-    if let Some(cached) = cache.get(key) {
-        if !cached.access_token.trim().is_empty() && !is_expiring_soon(cached.expires_at) {
-            return Ok(cached.access_token.clone());
-        }
-    }
-
-    let refreshed = fetch_token_for_config(auth).await?;
-    let access_token = refreshed.access_token.clone();
-    cache.insert(key.clone(), refreshed);
-    Ok(access_token)
-}
-
-fn load_cached_token(path: &Path) -> Result<Option<CachedToken>, String> {
+pub(crate) fn load_cached_token(path: &Path) -> Result<Option<CachedToken>, String> {
     if !path.exists() {
         return Ok(None);
     }
@@ -275,7 +231,7 @@ fn load_cached_token(path: &Path) -> Result<Option<CachedToken>, String> {
     }))
 }
 
-fn save_cached_token(path: &Path, token: &CachedToken) -> Result<(), String> {
+pub(crate) fn save_cached_token(path: &Path, token: &CachedToken) -> Result<(), String> {
     let parent = path
         .parent()
         .ok_or("Token cache path did not have a parent directory".to_string())?;
@@ -288,9 +244,7 @@ fn save_cached_token(path: &Path, token: &CachedToken) -> Result<(), String> {
     fs::write(path, json).map_err(|e| e.to_string())
 }
 
-fn resolve_token_cache_file_path(
-    auth: &AuthConfig,
-) -> Result<PathBuf, String> {
+pub(crate) fn resolve_token_cache_file_path(auth: &AuthConfig) -> Result<PathBuf, String> {
     if let Some(configured) = configured_token_cache_path(auth) {
         return normalize_token_cache_path(configured);
     }

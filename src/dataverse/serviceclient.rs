@@ -1,11 +1,17 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 
+use chrono::{DateTime, Utc};
 use log::debug;
 use reqwest::Client;
 use serde_json::Value;
+use tokio::sync::Mutex;
 
 use crate::LogLevel;
-use crate::auth::token::fetch_token;
+use crate::auth::token::{
+    AuthConfig, CachedToken, fetch_token_for_config, is_expiring_soon, load_cached_token,
+    parse_connection_string_auth_config, resolve_token_cache_file_path, save_cached_token,
+};
 use crate::dataverse::entity::Entity;
 use crate::dataverse::entity::Value::Int;
 use crate::dataverse::entityattribute::EntityAttribute;
@@ -29,8 +35,10 @@ struct ODataList<T> {
 /// HTTP client for Dataverse Web API operations.
 pub struct ServiceClient {
     client: Client,
+    auth: AuthConfig,
     base_url: std::string::String,
-    token: std::string::String,
+    token_cache_path: PathBuf,
+    token: Mutex<CachedToken>,
     log_level: LogLevel,
 }
 
@@ -38,14 +46,37 @@ impl ServiceClient {
     /// Create a new client from a Dataverse connection string.
     pub async fn new(connection_string: &str, log_level: LogLevel) -> Result<Self, String> {
         let base_url = parse_connection_string_url(connection_string)?;
-        let token = fetch_token(connection_string).await?;
+        let auth = parse_connection_string_auth_config(connection_string)?;
+        let token_cache_path = resolve_token_cache_file_path(&auth)?;
+
+        let token = if let Some(cached) = load_cached_token(&token_cache_path)? {
+            if !cached.access_token.trim().is_empty() && !is_expiring_soon(cached.expires_at) {
+                cached
+            } else {
+                let refreshed = fetch_token_for_config(&auth).await?;
+                save_cached_token(&token_cache_path, &refreshed)?;
+                refreshed
+            }
+        } else {
+            let fetched = fetch_token_for_config(&auth).await?;
+            save_cached_token(&token_cache_path, &fetched)?;
+            fetched
+        };
 
         Ok(Self {
             client: Client::new(),
+            auth,
             base_url,
-            token: token.access_token,
+            token_cache_path,
+            token: Mutex::new(token),
             log_level,
         })
+    }
+
+    /// Return the current token expiry as a UTC datetime.
+    pub async fn token_expires_at(&self) -> Option<DateTime<Utc>> {
+        let expires_at = self.token.lock().await.expires_at?;
+        DateTime::<Utc>::from_timestamp(expires_at as i64, 0)
     }
 
     /// Retrieve multiple records by FetchXML, handling paging when needed.
@@ -84,10 +115,11 @@ impl ServiceClient {
                 debug!("Url: {:?}", url);
             }
 
+            let access_token = self.get_access_token().await?;
             let resp = self
                 .client
                 .get(&url)
-                .bearer_auth(&self.token)
+                .bearer_auth(&access_token)
                 .header("Accept", "application/json")
                 .header(
                     "Prefer",
@@ -168,10 +200,11 @@ impl ServiceClient {
                 debug!("Url: {:?}", url);
             }
 
+            let access_token = self.get_access_token().await?;
             let resp = self
                 .client
                 .get(&url)
-                .bearer_auth(&self.token)
+                .bearer_auth(&access_token)
                 .header("Accept", "application/json")
                 .header(
                     "Prefer",
@@ -225,10 +258,11 @@ impl ServiceClient {
             debug!("Url: {:?}", url);
         }
 
+        let access_token = self.get_access_token().await?;
         let resp = self
             .client
             .get(&url)
-            .bearer_auth(&self.token)
+            .bearer_auth(&access_token)
             .header("Accept", "application/json")
             .header(
                 "Prefer",
@@ -262,10 +296,11 @@ impl ServiceClient {
             self.base_url
         );
 
+        let access_token = self.get_access_token().await?;
         let resp = self
             .client
             .get(&url)
-            .bearer_auth(&self.token)
+            .bearer_auth(&access_token)
             .header("Accept", "application/json")
             .send()
             .await
@@ -297,10 +332,11 @@ impl ServiceClient {
             self.base_url, logical
         );
 
+        let access_token = self.get_access_token().await?;
         let resp = self
             .client
             .get(&url)
-            .bearer_auth(&self.token)
+            .bearer_auth(&access_token)
             .header("Accept", "application/json")
             .send()
             .await
@@ -346,10 +382,11 @@ impl ServiceClient {
             self.base_url, entity_set, trimmed
         );
 
+        let access_token = self.get_access_token().await?;
         let request = self
             .client
             .patch(&url)
-            .bearer_auth(&self.token)
+            .bearer_auth(&access_token)
             .header("Accept", "application/json")
             .header("Content-Type", "application/json")
             .json(&attributes);
@@ -392,10 +429,11 @@ impl ServiceClient {
             self.base_url, entity_set, trimmed
         );
 
+        let access_token = self.get_access_token().await?;
         let request = self
             .client
             .delete(&url)
-            .bearer_auth(&self.token)
+            .bearer_auth(&access_token)
             .header("Accept", "application/json");
 
         let resp = options
@@ -411,6 +449,26 @@ impl ServiceClient {
         }
 
         Ok(())
+    }
+
+    async fn get_access_token(&self) -> Result<String, String> {
+        let mut token = self.token.lock().await;
+        if !token.access_token.trim().is_empty() && !is_expiring_soon(token.expires_at) {
+            return Ok(token.access_token.clone());
+        }
+
+        println!("Refreshing access token before request...");
+        let refreshed = match &self.auth {
+            AuthConfig::ClientCredentials { .. } => fetch_token_for_config(&self.auth).await?,
+            AuthConfig::DeviceCode { .. } => {
+                todo!("Refresh device code tokens");
+            }
+        };
+
+        save_cached_token(&self.token_cache_path, &refreshed)?;
+        let access_token = refreshed.access_token.clone();
+        *token = refreshed;
+        Ok(access_token)
     }
 }
 

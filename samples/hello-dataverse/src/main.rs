@@ -13,11 +13,11 @@ async fn main() -> Result<(), String> {
 
     if !secrets.device_code_connection_string.trim().is_empty() {
         attempted = true;
-        println!("Authenticating with connection string...");
+        println!("Authenticating with device-code connection string...");
         let client =
             ServiceClient::new(&secrets.device_code_connection_string, LogLevel::Information)
                 .await?;
-        run_scenarios("connection string", &client).await?;
+        run_standard_scenarios("device code connection string", &client).await?;
     }
 
     if !secrets.client_credentials_connection_string.trim().is_empty() {
@@ -29,7 +29,8 @@ async fn main() -> Result<(), String> {
         )
         .await?;
 
-        run_scenarios("client credentials connection string", &client).await?;
+        run_standard_scenarios("client credentials connection string", &client).await?;
+        scenarios::refresh_demo::run(&client).await?;
     }
 
     if !attempted {
@@ -42,8 +43,8 @@ async fn main() -> Result<(), String> {
     Ok(())
 }
 
-async fn run_scenarios(label: &str, client: &ServiceClient) -> Result<(), String> {
-    println!("Running sample with {label}...");
+async fn run_standard_scenarios(label: &str, client: &ServiceClient) -> Result<(), String> {
+    println!("Running standard scenarios with {label}...");
     scenarios::metadata::run(client).await?;
     scenarios::fetchxml::run(client).await?;
     Ok(())
