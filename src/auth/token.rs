@@ -212,14 +212,16 @@ async fn fetch_token_for_config(auth: &AuthConfig) -> Result<CachedToken, String
 /// Fetch a fresh access token from a Dataverse-style device-code connection string.
 pub async fn fetch_token(connection_string: &str) -> Result<CachedToken, String> {
     let auth = parse_connection_string_auth_config(connection_string)?;
-    if let Some(cached) = load_cached_token(&auth)? {
+    let cache_path = resolve_token_cache_file_path(&auth)?;
+
+    if let Some(cached) = load_cached_token(&cache_path)? {
         if !cached.access_token.trim().is_empty() && !is_expiring_soon(cached.expires_at) {
             return Ok(cached);
         }
     }
 
     let token = fetch_token_for_config(&auth).await?;
-    save_cached_token(&auth, &token)?;
+    save_cached_token(&cache_path, &token)?;
     Ok(token)
 }
 
@@ -252,10 +254,7 @@ pub async fn get_access_token<K: Eq + Hash + Clone>(
     Ok(access_token)
 }
 
-fn load_cached_token(
-    auth: &AuthConfig,
-) -> Result<Option<CachedToken>, String> {
-    let path = resolve_token_cache_file_path(auth)?;
+fn load_cached_token(path: &Path) -> Result<Option<CachedToken>, String> {
     if !path.exists() {
         return Ok(None);
     }
@@ -276,8 +275,7 @@ fn load_cached_token(
     }))
 }
 
-fn save_cached_token(auth: &AuthConfig, token: &CachedToken) -> Result<(), String> {
-    let path = resolve_token_cache_file_path(auth)?;
+fn save_cached_token(path: &Path, token: &CachedToken) -> Result<(), String> {
     let parent = path
         .parent()
         .ok_or("Token cache path did not have a parent directory".to_string())?;

@@ -11,14 +11,14 @@ async fn main() -> Result<(), String> {
     let secrets = load_secrets()?;
     let mut attempted = false;
 
-    // if !secrets.device_code_connection_string.trim().is_empty() {
-    //     attempted = true;
-    //     println!("Authenticating with connection string...");
-    //     let client =
-    //         ServiceClient::new(&secrets.device_code_connection_string, LogLevel::Information)
-    //             .await?;
-    //     run_scenarios("connection string", &client).await?;
-    // }
+    if !secrets.device_code_connection_string.trim().is_empty() {
+        attempted = true;
+        println!("Authenticating with connection string...");
+        let client =
+            ServiceClient::new(&secrets.device_code_connection_string, LogLevel::Information)
+                .await?;
+        run_scenarios("connection string", &client).await?;
+    }
 
     if !secrets.client_credentials_connection_string.trim().is_empty() {
         attempted = true;
@@ -28,6 +28,7 @@ async fn main() -> Result<(), String> {
             LogLevel::Information,
         )
         .await?;
+
         run_scenarios("client credentials connection string", &client).await?;
     }
 
