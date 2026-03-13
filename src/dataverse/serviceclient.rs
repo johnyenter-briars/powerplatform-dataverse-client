@@ -8,9 +8,12 @@ use serde_json::Value;
 use tokio::sync::Mutex;
 
 use crate::LogLevel;
+use crate::auth::connectionstring::{
+    parse_connection_string_auth_config, parse_connection_string_url,
+};
 use crate::auth::token::{
     AuthConfig, CachedToken, fetch_token_for_config, is_expiring_soon, load_cached_token,
-    parse_connection_string_auth_config, resolve_token_cache_file_path, save_cached_token,
+    resolve_token_cache_file_path, save_cached_token,
 };
 use crate::dataverse::entity::Entity;
 use crate::dataverse::entity::Value::Int;
@@ -470,28 +473,4 @@ impl ServiceClient {
         *token = refreshed;
         Ok(access_token)
     }
-}
-
-fn parse_connection_string_url(connection_string: &str) -> Result<String, String> {
-    for segment in connection_string.split(';') {
-        let trimmed = segment.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        let Some((key, value)) = trimmed.split_once('=') else {
-            return Err(format!("Invalid connection string segment: {trimmed}"));
-        };
-
-        if key.trim().eq_ignore_ascii_case("url") {
-            let url = value.trim().trim_end_matches('/').to_string();
-            if url.is_empty() {
-                return Err("Connection string Url was empty".to_string());
-            }
-
-            return Ok(url);
-        }
-    }
-
-    Err("Connection string missing Url".to_string())
 }

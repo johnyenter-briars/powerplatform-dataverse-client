@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -9,7 +8,6 @@ use uuid::Uuid;
 
 use crate::auth::credentials::{
     fetch_client_credentials_token_with_expiry, fetch_device_code_token_from_parts,
-    parse_device_code_connection_string,
 };
 
 const REFRESH_SKEW_SECS: u64 = 300;
@@ -82,78 +80,6 @@ fn parse_jwt_expiry(access_token: &str) -> Option<u64> {
     json.get("exp").and_then(|value| value.as_u64())
 }
 
-fn parse_connection_string_values(
-    connection_string: &str,
-) -> Result<HashMap<String, String>, String> {
-    let mut values = HashMap::new();
-
-    for segment in connection_string.split(';') {
-        let trimmed = segment.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        let Some((key, value)) = trimmed.split_once('=') else {
-            return Err(format!("Invalid connection string segment: {trimmed}"));
-        };
-
-        values.insert(key.trim().to_ascii_lowercase(), value.trim().to_string());
-    }
-
-    Ok(values)
-}
-
-pub(crate) fn parse_connection_string_auth_config(
-    connection_string: &str,
-) -> Result<AuthConfig, String> {
-    let values = parse_connection_string_values(connection_string)?;
-
-    let url = values
-        .get("url")
-        .cloned()
-        .filter(|value| !value.trim().is_empty())
-        .ok_or("Connection string missing Url".to_string())?;
-
-    let client_id = values
-        .get("clientid")
-        .or_else(|| values.get("appid"))
-        .cloned()
-        .filter(|value| !value.trim().is_empty());
-    let client_secret = values
-        .get("clientsecret")
-        .cloned()
-        .filter(|value| !value.trim().is_empty());
-    let tenant_id = values
-        .get("tenantid")
-        .cloned()
-        .filter(|value| !value.trim().is_empty());
-    let token_cache_store_path = values
-        .get("tokencachestorepath")
-        .cloned()
-        .filter(|value| !value.trim().is_empty());
-
-    if let (Some(client_id), Some(client_secret), Some(tenant_id)) =
-        (client_id.clone(), client_secret, tenant_id.clone())
-    {
-        return Ok(AuthConfig::ClientCredentials {
-            client_id,
-            client_secret,
-            tenant_id,
-            scope: format!("{}/.default", url.trim_end_matches('/')),
-            token_cache_store_path,
-        });
-    }
-
-    let parsed = parse_device_code_connection_string(connection_string)?;
-
-    Ok(AuthConfig::DeviceCode {
-        client_id: parsed.client_id,
-        dataverse_url: parsed.dataverse_url,
-        tenant_id: parsed.tenant_id,
-        token_cache_store_path: parsed.token_cache_store_path,
-    })
-}
-
 pub(crate) async fn fetch_token_for_config(auth: &AuthConfig) -> Result<CachedToken, String> {
     match auth {
         AuthConfig::ClientCredentials {
@@ -198,7 +124,7 @@ pub(crate) fn load_cached_token(path: &Path) -> Result<Option<CachedToken>, Stri
         return Ok(None);
     }
 
-    let contents = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let contents = fs::read_to_string(path).map_err(|e| e.to_string())?;
     if contents.trim().is_empty() {
         return Ok(None);
     }

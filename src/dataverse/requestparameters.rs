@@ -32,7 +32,7 @@ impl RequestParameters {
             request = request.header("MSCRM.SuppressCallbackRegistrationExpanderJob", "true");
         }
 
-        // TODO:
+        // TODO: support specific step id bypassing
         // if let Some(step_ids) = &self.bypass_business_logic_execution_step_ids {
         //     request = request.header(
         //         "MSCRM.BypassBusinessLogicExecutionStepIds",

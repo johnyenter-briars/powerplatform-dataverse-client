@@ -25,34 +25,14 @@ pub struct ClientCredentialsToken {
     pub expires_at: u64,
 }
 
-pub(crate) struct DeviceCodeConnectionString {
-    pub(crate) client_id: String,
-    pub(crate) dataverse_url: String,
-    pub(crate) tenant_id: String,
-    pub(crate) token_cache_store_path: Option<String>,
-}
-
 struct DeviceCodeStart {
     device_code: String,
     expires_in: u64,
     interval: u64,
 }
 
-/// Fetch an access token using the client credentials flow.
-pub async fn fetch_client_credentials_token(
-    client_id: &str,
-    client_secret: &str,
-    tenant_id: &str,
-    scope: &str,
-) -> Result<String, String> {
-    let token =
-        fetch_client_credentials_token_with_expiry(client_id, client_secret, tenant_id, scope)
-            .await?;
-    Ok(token.access_token)
-}
-
 /// Fetch a client-credentials token along with its expiry timestamp.
-pub async fn fetch_client_credentials_token_with_expiry(
+pub(crate) async fn fetch_client_credentials_token_with_expiry(
     client_id: &str,
     client_secret: &str,
     tenant_id: &str,
@@ -108,24 +88,6 @@ pub async fn fetch_client_credentials_token_with_expiry(
     })
 }
 
-/// Validate client credentials by acquiring a token.
-pub async fn validate_client_credentials(
-    client_id: &str,
-    client_secret: &str,
-    tenant_id: &str,
-    scope: &str,
-) -> Result<(), String> {
-    fetch_client_credentials_token(client_id, client_secret, tenant_id, scope).await?;
-    Ok(())
-}
-
-/// Fetch an access token using the OAuth device code flow from a Dataverse-style connection string.
-pub async fn fetch_device_code_token(connection_string: &str) -> Result<String, String> {
-    let config = parse_device_code_connection_string(connection_string)?;
-    fetch_device_code_token_from_parts(&config.client_id, &config.dataverse_url, &config.tenant_id)
-        .await
-}
-
 pub(crate) async fn fetch_device_code_token_from_parts(
     client_id: &str,
     dataverse_url: &str,
@@ -145,153 +107,6 @@ pub(crate) async fn fetch_device_code_token_from_parts(
         start.expires_in,
     )
     .await
-}
-
-/// Exchange an authorization code (or password grant) for tokens.
-pub async fn exchange_authorization_code(
-    client_id: &str,
-    client_secret: &str,
-    tenant_id: &str,
-    scope: &str,
-    authorization_code: &str,
-    redirect_uri: &str,
-    username: &str,
-    password: &str,
-) -> Result<TokenExchange, String> {
-    let client = Client::new();
-    let token_url = format!(
-        "https://login.microsoftonline.com/{}/oauth2/v2.0/token",
-        tenant_id
-    );
-
-    let mut params = HashMap::new();
-    params.insert("client_id", client_id);
-    params.insert("client_secret", client_secret);
-    params.insert("scope", scope);
-    if authorization_code.trim().is_empty() {
-        params.insert("grant_type", "password");
-        params.insert("username", username);
-        params.insert("password", password);
-    } else {
-        params.insert("grant_type", "authorization_code");
-        params.insert("code", authorization_code);
-        params.insert("redirect_uri", redirect_uri);
-    }
-
-    let resp = client
-        .post(&token_url)
-        .form(&params)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if !resp.status().is_success() {
-        let body = resp.text().await.unwrap_or_default();
-        return Err(body);
-    }
-
-    let json: Value = resp.json().await.map_err(|e| e.to_string())?;
-
-    let access_token = json
-        .get("access_token")
-        .and_then(|v| v.as_str())
-        .ok_or("No access_token in response")?
-        .to_string();
-
-    let refresh_token = json
-        .get("refresh_token")
-        .and_then(|v| v.as_str())
-        .ok_or("No refresh_token in response")?
-        .to_string();
-
-    let expires_in = json
-        .get("expires_in")
-        .and_then(|v| v.as_u64())
-        .ok_or("No expires_in in response")?;
-
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|e| e.to_string())?
-        .as_secs();
-
-    let expires_at = now + expires_in;
-
-    Ok(TokenExchange {
-        access_token,
-        refresh_token,
-        expires_at,
-    })
-}
-
-/// Refresh an authorization code token using a refresh token.
-pub async fn refresh_authorization_token(
-    _client_id: &str,
-    _client_secret: &str,
-    _tenant_id: &str,
-    _scope: &str,
-    _refresh_token: &str,
-) -> Result<TokenExchange, String> {
-    todo!("#11");
-}
-
-pub(crate) fn parse_device_code_connection_string(
-    connection_string: &str,
-) -> Result<DeviceCodeConnectionString, String> {
-    let mut values = HashMap::new();
-
-    for segment in connection_string.split(';') {
-        let trimmed = segment.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        let Some((key, value)) = trimmed.split_once('=') else {
-            return Err(format!("Invalid connection string segment: {trimmed}"));
-        };
-
-        values.insert(key.trim().to_ascii_lowercase(), value.trim().to_string());
-    }
-
-    let auth_type = values
-        .get("authtype")
-        .ok_or("Connection string missing AuthType".to_string())?;
-    if !auth_type.eq_ignore_ascii_case("oauth") {
-        return Err("Device code auth requires AuthType=OAuth".to_string());
-    }
-
-    let client_id = values
-        .get("appid")
-        .cloned()
-        .ok_or("Connection string missing AppId".to_string())?;
-    let dataverse_url = values
-        .get("url")
-        .cloned()
-        .ok_or("Connection string missing Url".to_string())?;
-
-    let tenant_id = values
-        .get("tenantid")
-        .cloned()
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| "organizations".to_string());
-    let token_cache_store_path = values
-        .get("tokencachestorepath")
-        .cloned()
-        .filter(|value| !value.trim().is_empty());
-
-    if client_id.trim().is_empty() {
-        return Err("Connection string AppId was empty".to_string());
-    }
-
-    if dataverse_url.trim().is_empty() {
-        return Err("Connection string Url was empty".to_string());
-    }
-
-    Ok(DeviceCodeConnectionString {
-        client_id,
-        dataverse_url: dataverse_url.trim_end_matches('/').to_string(),
-        tenant_id,
-        token_cache_store_path,
-    })
 }
 
 fn build_dataverse_device_code_scope(dataverse_url: &str) -> String {
@@ -455,7 +270,7 @@ async fn poll_device_code_token(
 
 #[cfg(test)]
 mod tests {
-    use super::parse_device_code_connection_string;
+    use crate::auth::connectionstring::parse_device_code_connection_string;
 
     #[test]
     fn parses_device_code_connection_string() {
