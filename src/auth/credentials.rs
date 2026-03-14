@@ -88,11 +88,11 @@ pub(crate) async fn fetch_client_credentials_token_with_expiry(
     })
 }
 
-pub(crate) async fn fetch_device_code_token_from_parts(
+pub(crate) async fn fetch_device_code_token_exchange_from_parts(
     client_id: &str,
     dataverse_url: &str,
     tenant_id: &str,
-) -> Result<String, String> {
+) -> Result<TokenExchange, String> {
     let scope = build_dataverse_device_code_scope(dataverse_url);
     let client = Client::new();
     let start = start_device_code_flow(&client, tenant_id, client_id, &scope).await?;
@@ -107,6 +107,15 @@ pub(crate) async fn fetch_device_code_token_from_parts(
         start.expires_in,
     )
     .await
+}
+
+pub(crate) async fn refresh_device_code_token(
+    client_id: &str,
+    tenant_id: &str,
+    scope: &str,
+    refresh_token: &str,
+) -> Result<TokenExchange, String> {
+    refresh_token_exchange(client_id, None, tenant_id, scope, refresh_token).await
 }
 
 fn build_dataverse_device_code_scope(dataverse_url: &str) -> String {
@@ -194,7 +203,7 @@ async fn poll_device_code_token(
     device_code: &str,
     interval: u64,
     expires_in: u64,
-) -> Result<String, String> {
+) -> Result<TokenExchange, String> {
     let token_url = format!("https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token");
     let started_at = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -229,13 +238,32 @@ async fn poll_device_code_token(
             let access_token = json
                 .get("access_token")
                 .and_then(|v| v.as_str())
-                .ok_or("No access_token in response")?;
+                .ok_or("No access_token in response")?
+                .to_string();
+            let refresh_token = json
+                .get("refresh_token")
+                .and_then(|v| v.as_str())
+                .ok_or("No refresh_token in response")?
+                .to_string();
+            let expires_in = json
+                .get("expires_in")
+                .and_then(|v| v.as_u64())
+                .ok_or("No expires_in in response")?;
 
             if access_token.trim().is_empty() {
                 return Err("Access token was empty".to_string());
             }
 
-            return Ok(access_token.to_string());
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_err(|e| e.to_string())?
+                .as_secs();
+
+            return Ok(TokenExchange {
+                access_token,
+                refresh_token,
+                expires_at: now + expires_in,
+            });
         }
 
         let json: Value = resp.json().await.map_err(|e| e.to_string())?;
@@ -266,6 +294,70 @@ async fn poll_device_code_token(
             }
         }
     }
+}
+
+async fn refresh_token_exchange(
+    client_id: &str,
+    client_secret: Option<&str>,
+    tenant_id: &str,
+    scope: &str,
+    refresh_token: &str,
+) -> Result<TokenExchange, String> {
+    let client = Client::new();
+    let token_url = format!(
+        "https://login.microsoftonline.com/{}/oauth2/v2.0/token",
+        tenant_id
+    );
+
+    let mut params = HashMap::new();
+    params.insert("client_id", client_id);
+    params.insert("scope", scope);
+    params.insert("grant_type", "refresh_token");
+    params.insert("refresh_token", refresh_token);
+
+    if let Some(client_secret) = client_secret.filter(|value| !value.trim().is_empty()) {
+        params.insert("client_secret", client_secret);
+    }
+
+    let resp = client
+        .post(&token_url)
+        .form(&params)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !resp.status().is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        return Err(body);
+    }
+
+    let json: Value = resp.json().await.map_err(|e| e.to_string())?;
+
+    let access_token = json
+        .get("access_token")
+        .and_then(|v| v.as_str())
+        .ok_or("No access_token in response")?
+        .to_string();
+    let refreshed_token = json
+        .get("refresh_token")
+        .and_then(|v| v.as_str())
+        .unwrap_or(refresh_token)
+        .to_string();
+    let expires_in = json
+        .get("expires_in")
+        .and_then(|v| v.as_u64())
+        .ok_or("No expires_in in response")?;
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_secs();
+
+    Ok(TokenExchange {
+        access_token,
+        refresh_token: refreshed_token,
+        expires_at: now + expires_in,
+    })
 }
 
 #[cfg(test)]

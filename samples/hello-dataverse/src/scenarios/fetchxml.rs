@@ -42,18 +42,18 @@ async fn run_fetchxml(
         .retrieve_multiple_fetchxml(entity_set, fetchxml)
         .await?;
 
-    println!("FetchXML [{}] returned {} record(s)", entity_set, entities.len());
+    println!(
+        "FetchXML [{}] returned {} record(s)",
+        entity_set,
+        entities.len()
+    );
 
     if DEBUG_OUTPUT {
         println!("{:#?}", entities);
     }
 
     if let Some(first) = entities.first() {
-        let mut keys = first
-            .attributes
-            .keys()
-            .cloned()
-            .collect::<Vec<String>>();
+        let mut keys = first.attributes.keys().cloned().collect::<Vec<String>>();
 
         keys.sort();
 

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::auth::credentials::{
-    fetch_client_credentials_token_with_expiry, fetch_device_code_token_from_parts,
+    fetch_client_credentials_token_with_expiry, fetch_device_code_token_exchange_from_parts,
 };
 
 const REFRESH_SKEW_SECS: u64 = 300;
@@ -17,6 +17,8 @@ const REFRESH_SKEW_SECS: u64 = 300;
 pub(crate) struct CachedToken {
     /// OAuth access token.
     pub access_token: String,
+    /// OAuth refresh token, when the auth flow provides one.
+    pub refresh_token: Option<String>,
     /// Expiration time as seconds since epoch.
     pub expires_at: Option<u64>,
 }
@@ -24,6 +26,7 @@ pub(crate) struct CachedToken {
 #[derive(Debug, Serialize, Deserialize)]
 struct TokenCacheFile {
     access_token: String,
+    refresh_token: Option<String>,
 }
 
 /// Authentication configuration for acquiring Dataverse access tokens.
@@ -99,6 +102,7 @@ pub(crate) async fn fetch_token_for_config(auth: &AuthConfig) -> Result<CachedTo
 
             Ok(CachedToken {
                 access_token: token.access_token,
+                refresh_token: None,
                 expires_at: Some(token.expires_at),
             })
         }
@@ -108,12 +112,14 @@ pub(crate) async fn fetch_token_for_config(auth: &AuthConfig) -> Result<CachedTo
             tenant_id,
             ..
         } => {
-            let access_token =
-                fetch_device_code_token_from_parts(client_id, dataverse_url, tenant_id).await?;
+            let token =
+                fetch_device_code_token_exchange_from_parts(client_id, dataverse_url, tenant_id)
+                    .await?;
 
             Ok(CachedToken {
-                expires_at: parse_jwt_expiry(&access_token),
-                access_token,
+                expires_at: Some(token.expires_at),
+                refresh_token: Some(token.refresh_token),
+                access_token: token.access_token,
             })
         }
     }
@@ -136,6 +142,7 @@ pub(crate) fn load_cached_token(path: &Path) -> Result<Option<CachedToken>, Stri
 
     Ok(Some(CachedToken {
         expires_at: parse_jwt_expiry(&cache.access_token),
+        refresh_token: cache.refresh_token,
         access_token: cache.access_token,
     }))
 }
@@ -148,6 +155,7 @@ pub(crate) fn save_cached_token(path: &Path, token: &CachedToken) -> Result<(), 
 
     let cache = TokenCacheFile {
         access_token: token.access_token.clone(),
+        refresh_token: token.refresh_token.clone(),
     };
     let json = serde_json::to_string_pretty(&cache).map_err(|e| e.to_string())?;
     fs::write(path, json).map_err(|e| e.to_string())

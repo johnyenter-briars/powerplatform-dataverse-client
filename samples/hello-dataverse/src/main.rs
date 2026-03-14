@@ -1,8 +1,8 @@
 mod config;
 mod scenarios;
 
-use powerplatform_dataverse_client::dataverse::serviceclient::ServiceClient;
 use powerplatform_dataverse_client::LogLevel;
+use powerplatform_dataverse_client::dataverse::serviceclient::ServiceClient;
 
 use config::load_secrets;
 
@@ -14,13 +14,20 @@ async fn main() -> Result<(), String> {
     if !secrets.device_code_connection_string.trim().is_empty() {
         attempted = true;
         println!("Authenticating with device-code connection string...");
-        let client =
-            ServiceClient::new(&secrets.device_code_connection_string, LogLevel::Information)
-                .await?;
+        let client = ServiceClient::new(
+            &secrets.device_code_connection_string,
+            LogLevel::Information,
+        )
+        .await?;
         run_standard_scenarios("device code connection string", &client).await?;
+        scenarios::refresh_demo::run(&client).await?;
     }
 
-    if !secrets.client_credentials_connection_string.trim().is_empty() {
+    if !secrets
+        .client_credentials_connection_string
+        .trim()
+        .is_empty()
+    {
         attempted = true;
         println!("Authenticating with client-credentials connection string...");
         let client = ServiceClient::new(

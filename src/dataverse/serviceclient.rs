@@ -11,6 +11,7 @@ use crate::LogLevel;
 use crate::auth::connectionstring::{
     parse_connection_string_auth_config, parse_connection_string_url,
 };
+use crate::auth::credentials::{TokenExchange, refresh_device_code_token};
 use crate::auth::token::{
     AuthConfig, CachedToken, fetch_token_for_config, is_expiring_soon, load_cached_token,
     resolve_token_cache_file_path, save_cached_token,
@@ -463,8 +464,27 @@ impl ServiceClient {
         println!("Refreshing access token before request...");
         let refreshed = match &self.auth {
             AuthConfig::ClientCredentials { .. } => fetch_token_for_config(&self.auth).await?,
-            AuthConfig::DeviceCode { .. } => {
-                todo!("Refresh device code tokens");
+            AuthConfig::DeviceCode {
+                client_id,
+                dataverse_url,
+                tenant_id,
+                ..
+            } => {
+                let refresh_token = token.refresh_token.clone().ok_or(
+                    "Device code token cannot refresh without a refresh token".to_string(),
+                )?;
+                let scope = format!(
+                    "{}/user_impersonation offline_access openid profile",
+                    dataverse_url
+                );
+                let token: TokenExchange =
+                    refresh_device_code_token(client_id, tenant_id, &scope, &refresh_token).await?;
+
+                CachedToken {
+                    access_token: token.access_token,
+                    refresh_token: Some(token.refresh_token),
+                    expires_at: Some(token.expires_at),
+                }
             }
         };
 
