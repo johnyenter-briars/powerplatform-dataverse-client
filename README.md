@@ -149,14 +149,6 @@ When `device_code_connection_string` is set, the sample prints the Microsoft sig
 
 If `TokenCacheStorePath` is set to a folder, the client stores `token_cache.txt` in that folder. If it is set to a file path, the client writes the cache JSON to that file directly. If omitted, the client uses `data_local_dir()/powerplatform-dataverse-client/<derived-guid>/token_cache.txt`.
 
-## Integration Tests
-
-```powershell
-cd integration-tests
-cp secrets.example.json secrets.json #populate secrets.json with auth information
-cargo test
-```
-
 ## Contributing
 
 Issues and pull requests are welcome. Please include a brief description of the change and, when possible, add or update tests.
