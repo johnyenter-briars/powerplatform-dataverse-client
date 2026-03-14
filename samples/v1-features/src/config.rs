@@ -5,7 +5,10 @@ use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct Secrets {
-    pub connection_string: String,
+    #[serde(default)]
+    pub device_code_connection_string: String,
+    #[serde(default)]
+    pub client_credentials_connection_string: String,
 }
 
 pub fn load_secrets() -> Result<Secrets, String> {
