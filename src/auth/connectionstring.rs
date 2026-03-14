@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::token::AuthConfig;
+use super::config::AuthConfig;
 
 pub(crate) struct DeviceCodeConnectionString {
     pub(crate) client_id: String,
@@ -66,7 +66,7 @@ pub(crate) fn parse_connection_string_auth_config(
             client_id,
             client_secret,
             tenant_id,
-            scope: format!("{}/.default", url.trim_end_matches('/')),
+            dataverse_url: url.trim_end_matches('/').to_string(),
             token_cache_store_path,
         });
     }

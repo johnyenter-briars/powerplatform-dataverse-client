@@ -1,5 +1,5 @@
 /// Authentication helpers for Dataverse and Microsoft identity flows.
-pub(crate) mod auth;
+pub mod auth;
 /// Dataverse-specific types and service client helpers.
 pub mod dataverse;
 /// Logging helpers and log level definitions.

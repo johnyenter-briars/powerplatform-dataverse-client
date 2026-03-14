@@ -8,12 +8,13 @@ use serde_json::Value;
 use tokio::sync::Mutex;
 
 use crate::LogLevel;
+use crate::auth::config::AuthConfig;
 use crate::auth::connectionstring::{
     parse_connection_string_auth_config, parse_connection_string_url,
 };
 use crate::auth::credentials::{TokenExchange, refresh_device_code_token};
 use crate::auth::token::{
-    AuthConfig, CachedToken, fetch_token_for_config, is_expiring_soon, load_cached_token,
+    CachedToken, fetch_token_for_config, is_expiring_soon, load_cached_token,
     resolve_token_cache_file_path, save_cached_token,
 };
 use crate::dataverse::entity::Entity;
@@ -48,9 +49,23 @@ pub struct ServiceClient {
 
 impl ServiceClient {
     /// Create a new client from a Dataverse connection string.
-    pub async fn new(connection_string: &str, log_level: LogLevel) -> Result<Self, String> {
+    pub async fn construct(connection_string: &str, log_level: LogLevel) -> Result<Self, String> {
         let base_url = parse_connection_string_url(connection_string)?;
         let auth = parse_connection_string_auth_config(connection_string)?;
+        Self::construct_internal(auth, base_url, log_level).await
+    }
+
+    /// Create a new client from explicit authentication configuration.
+    pub async fn construct_with_auth(auth: AuthConfig, log_level: LogLevel) -> Result<Self, String> {
+        let base_url = auth.dataverse_url().to_string();
+        Self::construct_internal(auth, base_url, log_level).await
+    }
+
+    async fn construct_internal(
+        auth: AuthConfig,
+        base_url: String,
+        log_level: LogLevel,
+    ) -> Result<Self, String> {
         let token_cache_path = resolve_token_cache_file_path(&auth)?;
 
         let token = if let Some(cached) = load_cached_token(&token_cache_path)? {

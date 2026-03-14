@@ -6,6 +6,7 @@ use base64::Engine;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::auth::config::AuthConfig;
 use crate::auth::credentials::{
     fetch_client_credentials_token_with_expiry, fetch_device_code_token_exchange_from_parts,
 };
@@ -27,35 +28,6 @@ pub(crate) struct CachedToken {
 struct TokenCacheFile {
     access_token: String,
     refresh_token: Option<String>,
-}
-
-/// Authentication configuration for acquiring Dataverse access tokens.
-#[derive(Clone, Debug)]
-pub(crate) enum AuthConfig {
-    /// Client credentials (app-only) flow configuration.
-    ClientCredentials {
-        /// Azure AD client ID.
-        client_id: String,
-        /// Azure AD client secret.
-        client_secret: String,
-        /// Azure AD tenant ID.
-        tenant_id: String,
-        /// OAuth scope string.
-        scope: String,
-        /// Optional token cache path from the original connection string.
-        token_cache_store_path: Option<String>,
-    },
-    /// Device code flow configuration.
-    DeviceCode {
-        /// Azure AD client ID.
-        client_id: String,
-        /// Dataverse environment URL.
-        dataverse_url: String,
-        /// Azure AD tenant ID.
-        tenant_id: String,
-        /// Optional token cache path from the original connection string.
-        token_cache_store_path: Option<String>,
-    },
 }
 
 /// Current timestamp in seconds since epoch.
@@ -89,14 +61,16 @@ pub(crate) async fn fetch_token_for_config(auth: &AuthConfig) -> Result<CachedTo
             client_id,
             client_secret,
             tenant_id,
-            scope,
             ..
         } => {
+            let scope = auth
+                .scope()
+                .ok_or("Client credentials auth config missing scope".to_string())?;
             let token = fetch_client_credentials_token_with_expiry(
                 client_id,
                 client_secret,
                 tenant_id,
-                scope,
+                &scope,
             )
             .await?;
 
