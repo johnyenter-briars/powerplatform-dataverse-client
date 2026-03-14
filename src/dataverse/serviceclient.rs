@@ -461,15 +461,18 @@ impl ServiceClient {
             return Ok(token.access_token.clone());
         }
 
-        println!("Refreshing access token before request...");
         let refreshed = match &self.auth {
-            AuthConfig::ClientCredentials { .. } => fetch_token_for_config(&self.auth).await?,
+            AuthConfig::ClientCredentials { .. } => {
+                println!("Refreshing access token before request using client credentials...");
+                fetch_token_for_config(&self.auth).await?
+            }
             AuthConfig::DeviceCode {
                 client_id,
                 dataverse_url,
                 tenant_id,
                 ..
             } => {
+                println!("Refreshing access token before request using device code...");
                 let refresh_token = token.refresh_token.clone().ok_or(
                     "Device code token cannot refresh without a refresh token".to_string(),
                 )?;
