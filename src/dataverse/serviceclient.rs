@@ -49,19 +49,19 @@ pub struct ServiceClient {
 
 impl ServiceClient {
     /// Create a new client from a Dataverse connection string.
-    pub async fn construct(connection_string: &str, log_level: LogLevel) -> Result<Self, String> {
+    pub async fn new(connection_string: &str, log_level: LogLevel) -> Result<Self, String> {
         let base_url = parse_connection_string_url(connection_string)?;
         let auth = parse_connection_string_auth_config(connection_string)?;
-        Self::construct_internal(auth, base_url, log_level).await
+        Self::new_internal(auth, base_url, log_level).await
     }
 
     /// Create a new client from explicit authentication configuration.
-    pub async fn construct_with_auth(auth: AuthConfig, log_level: LogLevel) -> Result<Self, String> {
+    pub async fn new_with_auth(auth: AuthConfig, log_level: LogLevel) -> Result<Self, String> {
         let base_url = auth.dataverse_url().to_string();
-        Self::construct_internal(auth, base_url, log_level).await
+        Self::new_internal(auth, base_url, log_level).await
     }
 
-    async fn construct_internal(
+    async fn new_internal(
         auth: AuthConfig,
         base_url: String,
         log_level: LogLevel,
