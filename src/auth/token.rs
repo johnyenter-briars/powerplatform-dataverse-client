@@ -7,8 +7,10 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::auth::config::AuthConfig;
+use crate::auth::devicecode::DeviceCodeFlowEvent;
 use crate::auth::credentials::{
     fetch_client_credentials_token_with_expiry, fetch_device_code_token_exchange_from_parts,
+    fetch_device_code_token_exchange_from_parts_with_progress,
 };
 
 const REFRESH_SKEW_SECS: u64 = 300;
@@ -56,6 +58,16 @@ fn parse_jwt_expiry(access_token: &str) -> Option<u64> {
 }
 
 pub(crate) async fn fetch_token_for_config(auth: &AuthConfig) -> Result<CachedToken, String> {
+    fetch_token_for_config_with_progress(auth, Option::<&fn(DeviceCodeFlowEvent)>::None).await
+}
+
+pub(crate) async fn fetch_token_for_config_with_progress<F>(
+    auth: &AuthConfig,
+    progress: Option<&F>,
+) -> Result<CachedToken, String>
+where
+    F: Fn(DeviceCodeFlowEvent) + Send + Sync,
+{
     match auth {
         AuthConfig::ClientCredentials {
             client_id,
@@ -86,9 +98,18 @@ pub(crate) async fn fetch_token_for_config(auth: &AuthConfig) -> Result<CachedTo
             tenant_id,
             ..
         } => {
-            let token =
+            let token = if progress.is_some() {
+                fetch_device_code_token_exchange_from_parts_with_progress(
+                    client_id,
+                    dataverse_url,
+                    tenant_id,
+                    progress,
+                )
+                .await?
+            } else {
                 fetch_device_code_token_exchange_from_parts(client_id, dataverse_url, tenant_id)
-                    .await?;
+                    .await?
+            };
 
             Ok(CachedToken {
                 expires_at: Some(token.expires_at),

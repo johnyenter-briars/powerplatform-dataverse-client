@@ -7,6 +7,8 @@ use reqwest::Client;
 use serde_json::Value;
 use tokio::time::{Duration, sleep};
 
+use crate::auth::devicecode::DeviceCodeFlowEvent;
+
 /// Result of exchanging an authorization code or refresh token.
 pub struct TokenExchange {
     /// OAuth access token.
@@ -93,9 +95,27 @@ pub(crate) async fn fetch_device_code_token_exchange_from_parts(
     dataverse_url: &str,
     tenant_id: &str,
 ) -> Result<TokenExchange, String> {
+    fetch_device_code_token_exchange_from_parts_with_progress(
+        client_id,
+        dataverse_url,
+        tenant_id,
+        Option::<&fn(DeviceCodeFlowEvent)>::None,
+    )
+    .await
+}
+
+pub(crate) async fn fetch_device_code_token_exchange_from_parts_with_progress<F>(
+    client_id: &str,
+    dataverse_url: &str,
+    tenant_id: &str,
+    progress: Option<&F>,
+) -> Result<TokenExchange, String>
+where
+    F: Fn(DeviceCodeFlowEvent) + Send + Sync,
+{
     let scope = build_dataverse_device_code_scope(dataverse_url);
     let client = Client::new();
-    let start = start_device_code_flow(&client, tenant_id, client_id, &scope).await?;
+    let start = start_device_code_flow(&client, tenant_id, client_id, &scope, progress).await?;
 
     poll_device_code_token(
         &client,
@@ -105,6 +125,7 @@ pub(crate) async fn fetch_device_code_token_exchange_from_parts(
         &start.device_code,
         start.interval,
         start.expires_in,
+        progress,
     )
     .await
 }
@@ -125,12 +146,16 @@ fn build_dataverse_device_code_scope(dataverse_url: &str) -> String {
     )
 }
 
-async fn start_device_code_flow(
+async fn start_device_code_flow<F>(
     client: &Client,
     tenant_id: &str,
     client_id: &str,
     scope: &str,
-) -> Result<DeviceCodeStart, String> {
+    progress: Option<&F>,
+) -> Result<DeviceCodeStart, String>
+where
+    F: Fn(DeviceCodeFlowEvent) + Send + Sync,
+{
     let device_code_url =
         format!("https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/devicecode");
 
@@ -188,6 +213,18 @@ async fn start_device_code_flow(
         println!("{message}");
     }
 
+    if let Some(progress) = progress {
+        progress(DeviceCodeFlowEvent::Code {
+            verification_uri: verification_uri.to_string(),
+            verification_uri_complete: verification_uri_complete.map(|value| value.to_string()),
+            user_code: user_code.to_string(),
+            message: json
+                .get("message")
+                .and_then(|v| v.as_str())
+                .map(|value| value.to_string()),
+        });
+    }
+
     Ok(DeviceCodeStart {
         device_code,
         expires_in,
@@ -195,7 +232,7 @@ async fn start_device_code_flow(
     })
 }
 
-async fn poll_device_code_token(
+async fn poll_device_code_token<F>(
     client: &Client,
     tenant_id: &str,
     client_id: &str,
@@ -203,7 +240,11 @@ async fn poll_device_code_token(
     device_code: &str,
     interval: u64,
     expires_in: u64,
-) -> Result<TokenExchange, String> {
+    progress: Option<&F>,
+) -> Result<TokenExchange, String>
+where
+    F: Fn(DeviceCodeFlowEvent) + Send + Sync,
+{
     let token_url = format!("https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token");
     let started_at = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -259,6 +300,10 @@ async fn poll_device_code_token(
                 .map_err(|e| e.to_string())?
                 .as_secs();
 
+            if let Some(progress) = progress {
+                progress(DeviceCodeFlowEvent::Success);
+            }
+
             return Ok(TokenExchange {
                 access_token,
                 refresh_token,
@@ -274,10 +319,16 @@ async fn poll_device_code_token(
 
         match error {
             "authorization_pending" => {
+                if let Some(progress) = progress {
+                    progress(DeviceCodeFlowEvent::Waiting);
+                }
                 sleep(Duration::from_secs(poll_interval)).await;
             }
             "slow_down" => {
                 poll_interval += 5;
+                if let Some(progress) = progress {
+                    progress(DeviceCodeFlowEvent::Waiting);
+                }
                 sleep(Duration::from_secs(poll_interval)).await;
             }
             "authorization_declined" => {
