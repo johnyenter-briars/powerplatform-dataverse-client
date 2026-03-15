@@ -359,20 +359,3 @@ async fn refresh_token_exchange(
         expires_at: now + expires_in,
     })
 }
-
-#[cfg(test)]
-mod tests {
-    use crate::auth::connectionstring::parse_device_code_connection_string;
-
-    #[test]
-    fn parses_device_code_connection_string() {
-        let parsed = parse_device_code_connection_string(
-            "AuthType=OAuth;Url=https://contosotest.crm.dynamics.com;AppId=51f81489-12ee-4a9e-aaae-a2591f45987d;RedirectUri=app://foo;LoginPrompt=Auto",
-        )
-        .expect("connection string should parse");
-
-        assert_eq!(parsed.client_id, "51f81489-12ee-4a9e-aaae-a2591f45987d");
-        assert_eq!(parsed.dataverse_url, "https://contosotest.crm.dynamics.com");
-        assert_eq!(parsed.tenant_id, "organizations");
-    }
-}

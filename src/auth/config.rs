@@ -1,28 +1,45 @@
+use serde::{Deserialize, Serialize};
+
 /// Public authentication configuration for acquiring Dataverse access tokens.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "method")]
 pub enum AuthConfig {
     /// Azure AD client credentials (app-only) flow configuration.
+    #[serde(rename = "ClientCredentials", alias = "ClientSecret")]
     ClientCredentials {
         /// Azure AD client ID.
+        #[serde(rename = "clientId")]
         client_id: String,
         /// Azure AD client secret.
+        #[serde(rename = "clientSecret")]
         client_secret: String,
         /// Azure AD tenant ID.
+        #[serde(rename = "tenantId")]
         tenant_id: String,
         /// Dataverse environment URL.
+        #[serde(rename = "dataverseUrl")]
         dataverse_url: String,
         /// Optional token cache path from the original connection string.
+        #[serde(default)]
+        #[serde(rename = "tokenCacheStorePath")]
         token_cache_store_path: Option<String>,
     },
     /// Device code flow configuration.
+    #[serde(rename = "DeviceCode", alias = "AuthorizationCode", alias = "OAuth")]
     DeviceCode {
         /// Azure AD client ID.
+        #[serde(rename = "clientId")]
         client_id: String,
         /// Dataverse environment URL.
+        #[serde(rename = "dataverseUrl")]
         dataverse_url: String,
         /// Azure AD tenant ID.
+        #[serde(default)]
+        #[serde(rename = "tenantId")]
         tenant_id: String,
         /// Optional token cache path from the original connection string.
+        #[serde(default)]
+        #[serde(rename = "tokenCacheStorePath")]
         token_cache_store_path: Option<String>,
     },
 }
