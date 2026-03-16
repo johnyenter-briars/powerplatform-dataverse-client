@@ -33,3 +33,9 @@ cargo run -- --scenario metadata,fetchxml
 - `metadata`
 - `fetchxml`
 - `refresh-demo`
+
+The `metadata` scenario exercises:
+
+- `list_entity_definitions`
+- `list_entity_attributes`
+- `list_entity_relationships`

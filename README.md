@@ -22,6 +22,7 @@ The **long term** goal for this project is feature parity with the [Microsoft.Po
 | [FetchXML count helper](doc/fetchxml.md) | ✅ |
 | [Entity definitions metadata](doc/metadata.md) | ✅ |
 | [Entity attributes metadata](doc/metadata.md) | ✅ |
+| [Entity relationships metadata](doc/metadata.md) | ✅ |
 | Entity identity fields (id/logical/name via convention) | ✅ |
 | Update entity by ID | ✅ |
 | Delete entity by ID | ✅ |
@@ -85,6 +86,7 @@ Feature documentation:
 - `retrieve_multiple_fetchxml_count`
 - `list_entity_definitions`
 - `list_entity_attributes`
+- `list_entity_relationships`
 - `update_entity`
 - `update_entity_with_options`
 - `delete_entity`
