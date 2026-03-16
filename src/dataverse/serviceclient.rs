@@ -4,6 +4,8 @@ use std::path::PathBuf;
 use chrono::{DateTime, Utc};
 use log::debug;
 use reqwest::Client;
+use serde::de::DeserializeOwned;
+use serde_json::Map;
 use serde_json::Value;
 use tokio::sync::Mutex;
 
@@ -21,6 +23,7 @@ use crate::dataverse::entity::Entity;
 use crate::dataverse::entity::Value::Int;
 use crate::dataverse::entityattribute::EntityAttribute;
 use crate::dataverse::entitydefinition::EntityDefinition;
+use crate::dataverse::entityrelationship::EntityRelationship;
 use crate::dataverse::fetchxml::{apply_paging, ensure_aggregate_page_size, fetch_tag_has_attr};
 use crate::dataverse::parse::{
     extract_paging_cookie, parse_entities_from_response, parse_more_records,
@@ -35,6 +38,40 @@ const AGGREGATE_PAGE_SIZE: i32 = 5000;
 #[derive(Debug, serde::Deserialize)]
 struct ODataList<T> {
     value: Vec<T>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct EntityRelationshipDirectional {
+    #[serde(rename = "SchemaName")]
+    schema_name: String,
+    #[serde(rename = "ReferencedEntity")]
+    referenced_entity: Option<String>,
+    #[serde(rename = "ReferencedAttribute")]
+    referenced_attribute: Option<String>,
+    #[serde(rename = "ReferencingEntity")]
+    referencing_entity: Option<String>,
+    #[serde(rename = "ReferencingAttribute")]
+    referencing_attribute: Option<String>,
+    #[serde(rename = "IsCustomRelationship")]
+    is_custom_relationship: Option<bool>,
+    #[serde(flatten)]
+    extra: Map<String, Value>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct EntityRelationshipManyToMany {
+    #[serde(rename = "SchemaName")]
+    schema_name: String,
+    #[serde(rename = "Entity1LogicalName")]
+    entity1_logical_name: Option<String>,
+    #[serde(rename = "Entity2LogicalName")]
+    entity2_logical_name: Option<String>,
+    #[serde(rename = "IntersectEntityName")]
+    intersect_entity_name: Option<String>,
+    #[serde(rename = "IsCustomRelationship")]
+    is_custom_relationship: Option<bool>,
+    #[serde(flatten)]
+    extra: Map<String, Value>,
 }
 
 /// HTTP client for Dataverse Web API operations.
@@ -376,6 +413,72 @@ impl ServiceClient {
         Ok(parsed.value)
     }
 
+    /// List entity relationships for a given logical name.
+    pub async fn list_entity_relationships(
+        &self,
+        logical_name: &str,
+    ) -> Result<Vec<EntityRelationship>, std::string::String> {
+        let logical = logical_name.replace('\'', "''");
+        let many_to_one = self
+            .list_metadata_collection::<EntityRelationshipDirectional>(&format!(
+                "EntityDefinitions(LogicalName='{}')/ManyToOneRelationships?$select=SchemaName,ReferencedEntity,ReferencedAttribute,ReferencingEntity,ReferencingAttribute,IsCustomRelationship",
+                logical
+            ))
+            .await?
+            .into_iter()
+            .map(|relationship| EntityRelationship {
+                schema_name: relationship.schema_name,
+                relationship_type: "ManyToOne".to_string(),
+                referenced_entity: relationship.referenced_entity,
+                referenced_attribute: relationship.referenced_attribute,
+                referencing_entity: relationship.referencing_entity,
+                referencing_attribute: relationship.referencing_attribute,
+                intersect_entity_name: None,
+                is_custom_relationship: relationship.is_custom_relationship,
+                extra: relationship.extra.into_iter().collect(),
+            });
+
+        let one_to_many = self
+            .list_metadata_collection::<EntityRelationshipDirectional>(&format!(
+                "EntityDefinitions(LogicalName='{}')/OneToManyRelationships?$select=SchemaName,ReferencedEntity,ReferencedAttribute,ReferencingEntity,ReferencingAttribute,IsCustomRelationship",
+                logical
+            ))
+            .await?
+            .into_iter()
+            .map(|relationship| EntityRelationship {
+                schema_name: relationship.schema_name,
+                relationship_type: "OneToMany".to_string(),
+                referenced_entity: relationship.referenced_entity,
+                referenced_attribute: relationship.referenced_attribute,
+                referencing_entity: relationship.referencing_entity,
+                referencing_attribute: relationship.referencing_attribute,
+                intersect_entity_name: None,
+                is_custom_relationship: relationship.is_custom_relationship,
+                extra: relationship.extra.into_iter().collect(),
+            });
+
+        let many_to_many = self
+            .list_metadata_collection::<EntityRelationshipManyToMany>(&format!(
+                "EntityDefinitions(LogicalName='{}')/ManyToManyRelationships?$select=SchemaName,Entity1LogicalName,Entity2LogicalName,IntersectEntityName,IsCustomRelationship",
+                logical
+            ))
+            .await?
+            .into_iter()
+            .map(|relationship| EntityRelationship {
+                schema_name: relationship.schema_name,
+                relationship_type: "ManyToMany".to_string(),
+                referenced_entity: relationship.entity1_logical_name,
+                referenced_attribute: None,
+                referencing_entity: relationship.entity2_logical_name,
+                referencing_attribute: None,
+                intersect_entity_name: relationship.intersect_entity_name,
+                is_custom_relationship: relationship.is_custom_relationship,
+                extra: relationship.extra.into_iter().collect(),
+            });
+
+        Ok(many_to_one.chain(one_to_many).chain(many_to_many).collect())
+    }
+
     /// Update a single entity record by ID.
     pub async fn update_entity(
         &self,
@@ -510,5 +613,36 @@ impl ServiceClient {
         let access_token = refreshed.access_token.clone();
         *token = refreshed;
         Ok(access_token)
+    }
+
+    async fn list_metadata_collection<T>(&self, path: &str) -> Result<Vec<T>, String>
+    where
+        T: DeserializeOwned,
+    {
+        let url = format!("{}/api/data/v9.2/{}", self.base_url, path);
+
+        let access_token = self.get_access_token().await?;
+        let resp = self
+            .client
+            .get(&url)
+            .bearer_auth(&access_token)
+            .header("Accept", "application/json")
+            .send()
+            .await
+            .map_err(|e| format!("Request failed: {e}"))?;
+
+        let status = resp.status();
+
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(format!("Dataverse API error ({}): {}", status, body));
+        }
+
+        let parsed: ODataList<T> = resp
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse JSON: {e}"))?;
+
+        Ok(parsed.value)
     }
 }
