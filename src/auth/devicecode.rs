@@ -30,11 +30,10 @@ where
     };
 
     let token_cache_path = resolve_token_cache_file_path(auth)?;
-    if let Some(cached) = load_cached_token(&token_cache_path)? {
-        if !cached.access_token.trim().is_empty() && !is_expiring_soon(cached.expires_at) {
+    if let Some(cached) = load_cached_token(&token_cache_path)?
+        && !cached.access_token.trim().is_empty() && !is_expiring_soon(cached.expires_at) {
             return Ok(());
         }
-    }
 
     let token = fetch_token_for_config_with_progress(auth, Some(&progress)).await?;
     save_cached_token(&token_cache_path, &token)?;
