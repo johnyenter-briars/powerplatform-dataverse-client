@@ -360,7 +360,7 @@ impl ServiceClient {
         }
 
         let url = format!(
-            "{}/api/data/v9.2/EntityDefinitions?$select=LogicalName,SchemaName,DisplayName,EntitySetName,IsCustomEntity,PrimaryIdAttribute",
+            "{}/api/data/v9.2/EntityDefinitions?$select=LogicalName,SchemaName,DisplayName,EntitySetName,IsCustomEntity,IsActivity,PrimaryIdAttribute",
             self.base_url
         );
 

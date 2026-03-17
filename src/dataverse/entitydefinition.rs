@@ -24,6 +24,9 @@ pub struct EntityDefinition {
     /// True if the entity is custom.
     #[serde(rename = "IsCustomEntity")]
     pub is_custom_entity: bool,
+    /// True if the entity derives from the Dataverse activity model.
+    #[serde(rename = "IsActivity")]
+    pub is_activity: Option<bool>,
     /// Primary ID attribute logical name.
     #[serde(rename = "PrimaryIdAttribute")]
     pub primary_id_attribute: Option<String>,
