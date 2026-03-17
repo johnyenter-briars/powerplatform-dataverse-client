@@ -81,6 +81,7 @@ pub struct ServiceClient {
     base_url: std::string::String,
     token_cache_path: PathBuf,
     token: Mutex<CachedToken>,
+    entity_definitions_cache: Mutex<Option<Vec<EntityDefinition>>>,
     log_level: LogLevel,
 }
 
@@ -125,6 +126,7 @@ impl ServiceClient {
             base_url,
             token_cache_path,
             token: Mutex::new(token),
+            entity_definitions_cache: Mutex::new(None),
             log_level,
         })
     }
@@ -141,9 +143,10 @@ impl ServiceClient {
         entity: &str,
         fetchxml: &str,
     ) -> Result<Vec<Entity>, std::string::String> {
+        let primary_id_attribute = self.resolve_primary_id_attribute(entity).await?;
         if fetch_tag_has_attr(fetchxml, "top")? {
             return self
-                .retrieve_multiple_fetchxml_single(entity, fetchxml)
+                .retrieve_multiple_fetchxml_single(entity, fetchxml, primary_id_attribute.as_deref())
                 .await;
         }
 
@@ -197,7 +200,8 @@ impl ServiceClient {
                 .await
                 .map_err(|e| format!("Failed to parse JSON: {e}"))?;
 
-            let mut page_entities = parse_entities_from_response(&json, entity)?;
+            let mut page_entities =
+                parse_entities_from_response(&json, entity, primary_id_attribute.as_deref())?;
             let start_index = entities.len();
             for (offset, entity) in page_entities.iter_mut().enumerate() {
                 let row_number = (start_index + offset + 1) as i64;
@@ -227,7 +231,7 @@ impl ServiceClient {
     ) -> Result<usize, std::string::String> {
         if fetch_tag_has_attr(fetchxml, "top")? {
             let resp = self
-                .retrieve_multiple_fetchxml_single(entity, fetchxml)
+                .retrieve_multiple_fetchxml_single(entity, fetchxml, None)
                 .await?;
             return Ok(resp.len());
         }
@@ -301,6 +305,7 @@ impl ServiceClient {
         &self,
         entity: &str,
         fetchxml: &str,
+        primary_id_attribute: Option<&str>,
     ) -> Result<Vec<Entity>, std::string::String> {
         if self.log_level.includes_debug() {
             debug!("FetchXML: {}", fetchxml);
@@ -340,13 +345,20 @@ impl ServiceClient {
             .await
             .map_err(|e| format!("Failed to parse JSON: {e}"))?;
 
-        parse_entities_from_response(&json, entity)
+        parse_entities_from_response(&json, entity, primary_id_attribute)
     }
 
     /// List all entity definitions.
     pub async fn list_entity_definitions(
         &self,
     ) -> Result<Vec<EntityDefinition>, std::string::String> {
+        {
+            let cache = self.entity_definitions_cache.lock().await;
+            if let Some(value) = &*cache {
+                return Ok(value.clone());
+            }
+        }
+
         let url = format!(
             "{}/api/data/v9.2/EntityDefinitions?$select=LogicalName,SchemaName,DisplayName,EntitySetName,IsCustomEntity,PrimaryIdAttribute",
             self.base_url
@@ -374,7 +386,11 @@ impl ServiceClient {
             .await
             .map_err(|e| format!("Failed to parse JSON: {e}"))?;
 
-        Ok(parsed.value)
+        let value = parsed.value;
+        let mut cache = self.entity_definitions_cache.lock().await;
+        *cache = Some(value.clone());
+
+        Ok(value)
     }
 
     /// List entity attributes for a given logical name.
@@ -645,4 +661,27 @@ impl ServiceClient {
 
         Ok(parsed.value)
     }
+
+    async fn resolve_primary_id_attribute(
+        &self,
+        entity_set: &str,
+    ) -> Result<Option<String>, String> {
+        let definitions = self.list_entity_definitions().await?;
+        let target = normalize_entity_name(entity_set);
+
+        Ok(definitions
+            .into_iter()
+            .find(|definition| {
+                normalize_entity_name(&definition.entity_set_name) == target
+                    || normalize_entity_name(&definition.logical_name) == target
+                    || normalize_entity_name(&definition.schema_name) == target
+            })
+            .and_then(|definition| definition.primary_id_attribute))
+    }
+}
+
+fn normalize_entity_name(value: &str) -> String {
+    value
+        .trim_matches(|ch| ch == '[' || ch == ']' || ch == '"' || ch == '`')
+        .to_ascii_lowercase()
 }

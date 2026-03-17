@@ -36,6 +36,7 @@ pub(crate) fn extract_paging_cookie(json: &Value) -> Option<std::string::String>
 pub(crate) fn parse_entities_from_response(
     json: &Value,
     entity_set: &str,
+    primary_id_attribute: Option<&str>,
 ) -> Result<Vec<Entity>, std::string::String> {
     let response_object = json
         .as_object()
@@ -49,7 +50,9 @@ pub(crate) fn parse_entities_from_response(
 
     let mut entities: Vec<Entity> = vec![];
     let logical_name = infer_logical_name(entity_set);
-    let primary_id_key = format!("{}id", logical_name);
+    let primary_id_key = primary_id_attribute
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| format!("{}id", logical_name));
 
     for record_value in response_array {
         let record = record_value
