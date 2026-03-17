@@ -1,28 +1,21 @@
 mod config;
-mod scenarios;
-
-use powerplatform_dataverse_client::auth::credentials::fetch_client_credentials_token;
-use powerplatform_dataverse_client::dataverse::serviceclient::ServiceClient;
 use powerplatform_dataverse_client::LogLevel;
+use powerplatform_dataverse_client::dataverse::serviceclient::ServiceClient;
 
 use config::load_secrets;
 
 #[tokio::main]
 async fn main() -> Result<(), String> {
     let secrets = load_secrets()?;
+    if secrets.connection_string.trim().is_empty() {
+        return Err("Provide connection_string in secrets.json".to_string());
+    }
 
-    let token = fetch_client_credentials_token(
-        &secrets.client_id,
-        &secrets.client_secret,
-        &secrets.tenant_id,
-        &secrets.scope,
-    )
-    .await?;
+    println!("Connecting to Dataverse...");
+    let client = ServiceClient::new(&secrets.connection_string, LogLevel::Information).await?;
+    let definitions = client.list_entity_definitions().await?;
 
-    let client = ServiceClient::new(&secrets.dataverse_url, &token, LogLevel::Information);
-
-    scenarios::metadata::run(&client).await?;
-    scenarios::fetchxml::run(&client).await?;
-
+    println!("Connected successfully.");
+    println!("Entity definitions available: {}", definitions.len());
     Ok(())
 }

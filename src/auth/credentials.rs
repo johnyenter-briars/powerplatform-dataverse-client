@@ -5,6 +5,9 @@ use std::{
 
 use reqwest::Client;
 use serde_json::Value;
+use tokio::time::{Duration, sleep};
+
+use crate::auth::devicecode::DeviceCodeFlowEvent;
 
 /// Result of exchanging an authorization code or refresh token.
 pub struct TokenExchange {
@@ -24,21 +27,14 @@ pub struct ClientCredentialsToken {
     pub expires_at: u64,
 }
 
-/// Fetch an access token using the client credentials flow.
-pub async fn fetch_client_credentials_token(
-    client_id: &str,
-    client_secret: &str,
-    tenant_id: &str,
-    scope: &str,
-) -> Result<String, String> {
-    let token =
-        fetch_client_credentials_token_with_expiry(client_id, client_secret, tenant_id, scope)
-            .await?;
-    Ok(token.access_token)
+struct DeviceCodeStart {
+    device_code: String,
+    expires_in: u64,
+    interval: u64,
 }
 
 /// Fetch a client-credentials token along with its expiry timestamp.
-pub async fn fetch_client_credentials_token_with_expiry(
+pub(crate) async fn fetch_client_credentials_token_with_expiry(
     client_id: &str,
     client_secret: &str,
     tenant_id: &str,
@@ -94,102 +90,270 @@ pub async fn fetch_client_credentials_token_with_expiry(
     })
 }
 
-/// Validate client credentials by acquiring a token.
-pub async fn validate_client_credentials(
+pub(crate) async fn fetch_device_code_token_exchange_from_parts(
     client_id: &str,
-    client_secret: &str,
+    dataverse_url: &str,
     tenant_id: &str,
-    scope: &str,
-) -> Result<(), String> {
-    fetch_client_credentials_token(client_id, client_secret, tenant_id, scope).await?;
-    Ok(())
-}
-
-/// Exchange an authorization code (or password grant) for tokens.
-pub async fn exchange_authorization_code(
-    client_id: &str,
-    client_secret: &str,
-    tenant_id: &str,
-    scope: &str,
-    authorization_code: &str,
-    redirect_uri: &str,
-    username: &str,
-    password: &str,
 ) -> Result<TokenExchange, String> {
-    let client = Client::new();
-    let token_url = format!(
-        "https://login.microsoftonline.com/{}/oauth2/v2.0/token",
-        tenant_id
-    );
-
-    let mut params = HashMap::new();
-    params.insert("client_id", client_id);
-    params.insert("client_secret", client_secret);
-    params.insert("scope", scope);
-    if authorization_code.trim().is_empty() {
-        params.insert("grant_type", "password");
-        params.insert("username", username);
-        params.insert("password", password);
-    } else {
-        params.insert("grant_type", "authorization_code");
-        params.insert("code", authorization_code);
-        params.insert("redirect_uri", redirect_uri);
-    }
-
-    let resp = client
-        .post(&token_url)
-        .form(&params)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if !resp.status().is_success() {
-        let body = resp.text().await.unwrap_or_default();
-        return Err(body);
-    }
-
-    let json: Value = resp.json().await.map_err(|e| e.to_string())?;
-
-    let access_token = json
-        .get("access_token")
-        .and_then(|v| v.as_str())
-        .ok_or("No access_token in response")?
-        .to_string();
-
-    let refresh_token = json
-        .get("refresh_token")
-        .and_then(|v| v.as_str())
-        .ok_or("No refresh_token in response")?
-        .to_string();
-
-    let expires_in = json
-        .get("expires_in")
-        .and_then(|v| v.as_u64())
-        .ok_or("No expires_in in response")?;
-
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|e| e.to_string())?
-        .as_secs();
-
-    let expires_at = now + expires_in;
-
-    Ok(TokenExchange {
-        access_token,
-        refresh_token,
-        expires_at,
-    })
+    fetch_device_code_token_exchange_from_parts_with_progress(
+        client_id,
+        dataverse_url,
+        tenant_id,
+        Option::<&fn(DeviceCodeFlowEvent)>::None,
+    )
+    .await
 }
 
-/// Refresh an authorization code token using a refresh token.
-pub async fn refresh_authorization_token(
+pub(crate) async fn fetch_device_code_token_exchange_from_parts_with_progress<F>(
     client_id: &str,
-    client_secret: &str,
+    dataverse_url: &str,
+    tenant_id: &str,
+    progress: Option<&F>,
+) -> Result<TokenExchange, String>
+where
+    F: Fn(DeviceCodeFlowEvent) + Send + Sync,
+{
+    let scope = build_dataverse_device_code_scope(dataverse_url);
+    let client = Client::new();
+    let start = start_device_code_flow(&client, tenant_id, client_id, &scope, progress).await?;
+
+    poll_device_code_token(
+        &client,
+        tenant_id,
+        client_id,
+        &scope,
+        &start.device_code,
+        start.interval,
+        start.expires_in,
+        progress,
+    )
+    .await
+}
+
+pub(crate) async fn refresh_device_code_token(
+    client_id: &str,
     tenant_id: &str,
     scope: &str,
     refresh_token: &str,
 ) -> Result<TokenExchange, String> {
-    todo!("#11");
+    refresh_token_exchange(client_id, None, tenant_id, scope, refresh_token).await
+}
+
+fn build_dataverse_device_code_scope(dataverse_url: &str) -> String {
+    format!(
+        "{}/user_impersonation offline_access openid profile",
+        dataverse_url
+    )
+}
+
+async fn start_device_code_flow<F>(
+    client: &Client,
+    tenant_id: &str,
+    client_id: &str,
+    scope: &str,
+    progress: Option<&F>,
+) -> Result<DeviceCodeStart, String>
+where
+    F: Fn(DeviceCodeFlowEvent) + Send + Sync,
+{
+    let device_code_url =
+        format!("https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/devicecode");
+
+    let mut params = HashMap::new();
+    params.insert("client_id", client_id);
+    params.insert("scope", scope);
+
+    let resp = client
+        .post(&device_code_url)
+        .form(&params)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !resp.status().is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        return Err(body);
+    }
+
+    let json: Value = resp.json().await.map_err(|e| e.to_string())?;
+
+    let device_code = json
+        .get("device_code")
+        .and_then(|v| v.as_str())
+        .ok_or("No device_code in response")?
+        .to_string();
+    let expires_in = json
+        .get("expires_in")
+        .and_then(|v| v.as_u64())
+        .ok_or("No expires_in in response")?;
+    let interval = json.get("interval").and_then(|v| v.as_u64()).unwrap_or(5);
+    let user_code = json
+        .get("user_code")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
+    let verification_uri = json
+        .get("verification_uri")
+        .and_then(|v| v.as_str())
+        .unwrap_or("https://microsoft.com/devicelogin");
+    let verification_uri_complete = json
+        .get("verification_uri_complete")
+        .and_then(|v| v.as_str());
+
+    if let Some(complete_uri) = verification_uri_complete {
+        println!("Open this URL in your browser: {complete_uri}");
+    } else {
+        println!("Open this URL in your browser: {verification_uri}");
+    }
+
+    if !user_code.is_empty() {
+        println!("Enter this code if prompted: {user_code}");
+    }
+
+    if let Some(message) = json.get("message").and_then(|v| v.as_str()) {
+        println!("{message}");
+    }
+
+    if let Some(progress) = progress {
+        progress(DeviceCodeFlowEvent::Code {
+            verification_uri: verification_uri.to_string(),
+            verification_uri_complete: verification_uri_complete.map(|value| value.to_string()),
+            user_code: user_code.to_string(),
+            message: json
+                .get("message")
+                .and_then(|v| v.as_str())
+                .map(|value| value.to_string()),
+        });
+    }
+
+    Ok(DeviceCodeStart {
+        device_code,
+        expires_in,
+        interval,
+    })
+}
+
+async fn poll_device_code_token<F>(
+    client: &Client,
+    tenant_id: &str,
+    client_id: &str,
+    scope: &str,
+    device_code: &str,
+    interval: u64,
+    expires_in: u64,
+    progress: Option<&F>,
+) -> Result<TokenExchange, String>
+where
+    F: Fn(DeviceCodeFlowEvent) + Send + Sync,
+{
+    let token_url = format!("https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token");
+    let started_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_secs();
+    let mut poll_interval = interval.max(1);
+
+    loop {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|e| e.to_string())?
+            .as_secs();
+        if now.saturating_sub(started_at) >= expires_in {
+            return Err("Device code expired before authentication completed".to_string());
+        }
+
+        let mut params = HashMap::new();
+        params.insert("grant_type", "urn:ietf:params:oauth:grant-type:device_code");
+        params.insert("client_id", client_id);
+        params.insert("device_code", device_code);
+        params.insert("scope", scope);
+
+        let resp = client
+            .post(&token_url)
+            .form(&params)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if resp.status().is_success() {
+            let json: Value = resp.json().await.map_err(|e| e.to_string())?;
+            let access_token = json
+                .get("access_token")
+                .and_then(|v| v.as_str())
+                .ok_or("No access_token in response")?
+                .to_string();
+            let refresh_token = json
+                .get("refresh_token")
+                .and_then(|v| v.as_str())
+                .ok_or("No refresh_token in response")?
+                .to_string();
+            let expires_in = json
+                .get("expires_in")
+                .and_then(|v| v.as_u64())
+                .ok_or("No expires_in in response")?;
+
+            if access_token.trim().is_empty() {
+                return Err("Access token was empty".to_string());
+            }
+
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_err(|e| e.to_string())?
+                .as_secs();
+
+            if let Some(progress) = progress {
+                progress(DeviceCodeFlowEvent::Success);
+            }
+
+            return Ok(TokenExchange {
+                access_token,
+                refresh_token,
+                expires_at: now + expires_in,
+            });
+        }
+
+        let json: Value = resp.json().await.map_err(|e| e.to_string())?;
+        let error = json
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+
+        match error {
+            "authorization_pending" => {
+                if let Some(progress) = progress {
+                    progress(DeviceCodeFlowEvent::Waiting);
+                }
+                sleep(Duration::from_secs(poll_interval)).await;
+            }
+            "slow_down" => {
+                poll_interval += 5;
+                if let Some(progress) = progress {
+                    progress(DeviceCodeFlowEvent::Waiting);
+                }
+                sleep(Duration::from_secs(poll_interval)).await;
+            }
+            "authorization_declined" => {
+                return Err("Device code authentication was declined in the browser".to_string());
+            }
+            "expired_token" => {
+                return Err("Device code expired before authentication completed".to_string());
+            }
+            "bad_verification_code" => {
+                return Err("Device code was rejected by the identity provider".to_string());
+            }
+            _ => {
+                return Err(json.to_string());
+            }
+        }
+    }
+}
+
+async fn refresh_token_exchange(
+    client_id: &str,
+    client_secret: Option<&str>,
+    tenant_id: &str,
+    scope: &str,
+    refresh_token: &str,
+) -> Result<TokenExchange, String> {
     let client = Client::new();
     let token_url = format!(
         "https://login.microsoftonline.com/{}/oauth2/v2.0/token",
@@ -198,10 +362,13 @@ pub async fn refresh_authorization_token(
 
     let mut params = HashMap::new();
     params.insert("client_id", client_id);
-    params.insert("client_secret", client_secret);
     params.insert("scope", scope);
     params.insert("grant_type", "refresh_token");
     params.insert("refresh_token", refresh_token);
+
+    if let Some(client_secret) = client_secret.filter(|value| !value.trim().is_empty()) {
+        params.insert("client_secret", client_secret);
+    }
 
     let resp = client
         .post(&token_url)
@@ -222,13 +389,11 @@ pub async fn refresh_authorization_token(
         .and_then(|v| v.as_str())
         .ok_or("No access_token in response")?
         .to_string();
-
     let refreshed_token = json
         .get("refresh_token")
         .and_then(|v| v.as_str())
         .unwrap_or(refresh_token)
         .to_string();
-
     let expires_in = json
         .get("expires_in")
         .and_then(|v| v.as_u64())

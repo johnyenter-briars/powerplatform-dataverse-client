@@ -4,22 +4,24 @@ Unofficial Rust sdk for the Microsoft Dataverse (Power Platform) Web API.
 
 Currently in use as the backend for [Queryverse](https://github.com/johnyenter-briars/queryverse) - the Dataverse SQL client.
 
-The **long term** goal for this project is feature parity with the [Microsoft.PowerPlatform.Dataverse.Client](https://www.nuget.org/packages/Microsoft.PowerPlatform.Dataverse.Client).
-
 The **short term** goal is to provide Rust programs a frictionless, powerful, simple, and fast method of communication with Dataverse.
+
+The **long term** goal for this project is feature parity with the [Microsoft.PowerPlatform.Dataverse.Client](https://www.nuget.org/packages/Microsoft.PowerPlatform.Dataverse.Client).
 
 ## Features
 
 | Feature | Supported |
 | --- | --- |
-| Client-credentials auth | ✅ |
+| [Client-credentials auth](doc/client-credentials-auth.md) | ✅ |
 | Authorization code / password grant token exchange | ❌ |
-| Automatic token refresh (auth code flow) | ❌ |
-| FetchXML retrieval | ✅ |
-| FetchXML paging | ✅ |
-| FetchXML count helper | ✅ |
-| Entity definitions metadata | ✅ |
-| Entity attributes metadata | ✅ |
+| [Device code auth](doc/device-code-auth.md) | ✅ |
+| [Automatic token refresh](doc/token-refresh.md) | ✅ |
+| [Token cache](doc/token-cache.md) | ✅ |
+| [FetchXML retrieval](doc/fetchxml.md) | ✅ |
+| [FetchXML paging](doc/fetchxml.md) | ✅ |
+| [FetchXML count helper](doc/fetchxml.md) | ✅ |
+| [Entity definitions metadata](doc/metadata.md) | ✅ |
+| [Entity attributes metadata](doc/metadata.md) | ✅ |
 | Entity identity fields (id/logical/name via convention) | ✅ |
 | Update entity by ID | ✅ |
 | Delete entity by ID | ✅ |
@@ -36,25 +38,16 @@ The **short term** goal is to provide Rust programs a frictionless, powerful, si
 ## Quick Start
 
 ```rust
-use powerplatform_dataverse_client::auth::credentials::fetch_client_credentials_token;
 use powerplatform_dataverse_client::dataverse::serviceclient::ServiceClient;
 use powerplatform_dataverse_client::LogLevel;
 
 #[tokio::main]
 async fn main() -> Result<(), String> {
-    let token = fetch_client_credentials_token(
-        "CLIENT_ID",
-        "CLIENT_SECRET",
-        "TENANT_ID",
-        "https://YOUR_ORG.crm.dynamics.com/.default",
+    let client = ServiceClient::new(
+        "AuthType=ClientSecret;Url=https://YOUR_ORG.crm.dynamics.com;ClientId=CLIENT_ID;ClientSecret=CLIENT_SECRET;TenantId=TENANT_ID;TokenCacheStorePath=C:\\MyTokenCache\\token-cache.txt",
+        LogLevel::Information,
     )
     .await?;
-
-    let client = ServiceClient::new(
-        "https://YOUR_ORG.crm.dynamics.com",
-        &token,
-        LogLevel::Information,
-    );
 
     let fetchxml = r#"
         <fetch top="5">
@@ -74,15 +67,20 @@ async fn main() -> Result<(), String> {
 }
 ```
 
+Feature documentation:
+
+- [Client credentials auth](doc/client-credentials-auth.md)
+- [Device code auth](doc/device-code-auth.md)
+- [FetchXML](doc/fetchxml.md)
+- [Metadata](doc/metadata.md)
+- [Token refresh](doc/token-refresh.md)
+- [Token cache](doc/token-cache.md)
+
 ## Supported Methods
 
-### Authentication
-- `fetch_client_credentials_token`
-- `fetch_client_credentials_token_with_expiry`
-- `validate_client_credentials`
-- `exchange_authorization_code` (authorization code or password grant)
-
 ### Dataverse Service Client
+- `new`
+- `new_with_auth`
 - `retrieve_multiple_fetchxml`
 - `retrieve_multiple_fetchxml_count`
 - `list_entity_definitions`
@@ -143,17 +141,22 @@ cp secrets.example.json secrets.json #populate secrets.json with auth informatio
 cargo run
 ```
 
-## Integration Tests
+[hello-dataverse](samples/hello-dataverse/README.md) is the smallest sample.
 
-```powershell
-cd integration-tests
-cp secrets.example.json secrets.json #populate secrets.json with auth information
-cargo test
-```
+[v1-features](samples/v1-features/README.md) contains one scenario per feature, all launched from `main`:
+
+- [Device code auth scenario](samples/v1-features/src/scenarios/device_code_auth.rs)
+- [Client credentials auth scenario](samples/v1-features/src/scenarios/client_credentials_auth.rs)
+- [Metadata scenario](samples/v1-features/src/scenarios/metadata.rs)
+- [FetchXML scenario](samples/v1-features/src/scenarios/fetchxml.rs)
+- [Refresh demo scenario](samples/v1-features/src/scenarios/refresh_demo.rs)
 
 ## Contributing
 
 Issues and pull requests are welcome. Please include a brief description of the change and, when possible, add or update tests.
+
+## AI Disclosure
+Portions of this project were developed with the assistance of AI tools; all changes are reviewed and tested by maintainers.
 
 ## License
 

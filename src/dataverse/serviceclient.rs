@@ -1,10 +1,22 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 
+use chrono::{DateTime, Utc};
 use log::debug;
 use reqwest::Client;
 use serde_json::Value;
+use tokio::sync::Mutex;
 
 use crate::LogLevel;
+use crate::auth::config::AuthConfig;
+use crate::auth::connectionstring::{
+    parse_connection_string_auth_config, parse_connection_string_url,
+};
+use crate::auth::credentials::{TokenExchange, refresh_device_code_token};
+use crate::auth::token::{
+    CachedToken, fetch_token_for_config, is_expiring_soon, load_cached_token,
+    resolve_token_cache_file_path, save_cached_token,
+};
 use crate::dataverse::entity::Entity;
 use crate::dataverse::entity::Value::Int;
 use crate::dataverse::entityattribute::EntityAttribute;
@@ -28,20 +40,62 @@ struct ODataList<T> {
 /// HTTP client for Dataverse Web API operations.
 pub struct ServiceClient {
     client: Client,
+    auth: AuthConfig,
     base_url: std::string::String,
-    token: std::string::String,
+    token_cache_path: PathBuf,
+    token: Mutex<CachedToken>,
     log_level: LogLevel,
 }
 
 impl ServiceClient {
-    /// Create a new client for the given base URL and access token.
-    pub fn new(base_url: &str, token: &str, log_level: LogLevel) -> Self {
-        Self {
+    /// Create a new client from a Dataverse connection string.
+    pub async fn new(connection_string: &str, log_level: LogLevel) -> Result<Self, String> {
+        let base_url = parse_connection_string_url(connection_string)?;
+        let auth = parse_connection_string_auth_config(connection_string)?;
+        Self::new_internal(auth, base_url, log_level).await
+    }
+
+    /// Create a new client from explicit authentication configuration.
+    pub async fn new_with_auth(auth: AuthConfig, log_level: LogLevel) -> Result<Self, String> {
+        let base_url = auth.dataverse_url().to_string();
+        Self::new_internal(auth, base_url, log_level).await
+    }
+
+    async fn new_internal(
+        auth: AuthConfig,
+        base_url: String,
+        log_level: LogLevel,
+    ) -> Result<Self, String> {
+        let token_cache_path = resolve_token_cache_file_path(&auth)?;
+
+        let token = if let Some(cached) = load_cached_token(&token_cache_path)? {
+            if !cached.access_token.trim().is_empty() && !is_expiring_soon(cached.expires_at) {
+                cached
+            } else {
+                let refreshed = fetch_token_for_config(&auth).await?;
+                save_cached_token(&token_cache_path, &refreshed)?;
+                refreshed
+            }
+        } else {
+            let fetched = fetch_token_for_config(&auth).await?;
+            save_cached_token(&token_cache_path, &fetched)?;
+            fetched
+        };
+
+        Ok(Self {
             client: Client::new(),
-            base_url: base_url.trim_end_matches('/').to_string(),
-            token: token.to_string(),
+            auth,
+            base_url,
+            token_cache_path,
+            token: Mutex::new(token),
             log_level,
-        }
+        })
+    }
+
+    /// Return the current token expiry as a UTC datetime.
+    pub async fn token_expires_at(&self) -> Option<DateTime<Utc>> {
+        let expires_at = self.token.lock().await.expires_at?;
+        DateTime::<Utc>::from_timestamp(expires_at as i64, 0)
     }
 
     /// Retrieve multiple records by FetchXML, handling paging when needed.
@@ -80,10 +134,11 @@ impl ServiceClient {
                 debug!("Url: {:?}", url);
             }
 
+            let access_token = self.get_access_token().await?;
             let resp = self
                 .client
                 .get(&url)
-                .bearer_auth(&self.token)
+                .bearer_auth(&access_token)
                 .header("Accept", "application/json")
                 .header(
                     "Prefer",
@@ -164,10 +219,11 @@ impl ServiceClient {
                 debug!("Url: {:?}", url);
             }
 
+            let access_token = self.get_access_token().await?;
             let resp = self
                 .client
                 .get(&url)
-                .bearer_auth(&self.token)
+                .bearer_auth(&access_token)
                 .header("Accept", "application/json")
                 .header(
                     "Prefer",
@@ -221,10 +277,11 @@ impl ServiceClient {
             debug!("Url: {:?}", url);
         }
 
+        let access_token = self.get_access_token().await?;
         let resp = self
             .client
             .get(&url)
-            .bearer_auth(&self.token)
+            .bearer_auth(&access_token)
             .header("Accept", "application/json")
             .header(
                 "Prefer",
@@ -258,10 +315,11 @@ impl ServiceClient {
             self.base_url
         );
 
+        let access_token = self.get_access_token().await?;
         let resp = self
             .client
             .get(&url)
-            .bearer_auth(&self.token)
+            .bearer_auth(&access_token)
             .header("Accept", "application/json")
             .send()
             .await
@@ -293,10 +351,11 @@ impl ServiceClient {
             self.base_url, logical
         );
 
+        let access_token = self.get_access_token().await?;
         let resp = self
             .client
             .get(&url)
-            .bearer_auth(&self.token)
+            .bearer_auth(&access_token)
             .header("Accept", "application/json")
             .send()
             .await
@@ -342,10 +401,11 @@ impl ServiceClient {
             self.base_url, entity_set, trimmed
         );
 
+        let access_token = self.get_access_token().await?;
         let request = self
             .client
             .patch(&url)
-            .bearer_auth(&self.token)
+            .bearer_auth(&access_token)
             .header("Accept", "application/json")
             .header("Content-Type", "application/json")
             .json(&attributes);
@@ -388,10 +448,11 @@ impl ServiceClient {
             self.base_url, entity_set, trimmed
         );
 
+        let access_token = self.get_access_token().await?;
         let request = self
             .client
             .delete(&url)
-            .bearer_auth(&self.token)
+            .bearer_auth(&access_token)
             .header("Accept", "application/json");
 
         let resp = options
@@ -407,5 +468,47 @@ impl ServiceClient {
         }
 
         Ok(())
+    }
+
+    async fn get_access_token(&self) -> Result<String, String> {
+        let mut token = self.token.lock().await;
+        if !token.access_token.trim().is_empty() && !is_expiring_soon(token.expires_at) {
+            return Ok(token.access_token.clone());
+        }
+
+        let refreshed = match &self.auth {
+            AuthConfig::ClientCredentials { .. } => {
+                println!("Refreshing access token before request using client credentials...");
+                fetch_token_for_config(&self.auth).await?
+            }
+            AuthConfig::DeviceCode {
+                client_id,
+                dataverse_url,
+                tenant_id,
+                ..
+            } => {
+                println!("Refreshing access token before request using device code...");
+                let refresh_token = token.refresh_token.clone().ok_or(
+                    "Device code token cannot refresh without a refresh token".to_string(),
+                )?;
+                let scope = format!(
+                    "{}/user_impersonation offline_access openid profile",
+                    dataverse_url
+                );
+                let token: TokenExchange =
+                    refresh_device_code_token(client_id, tenant_id, &scope, &refresh_token).await?;
+
+                CachedToken {
+                    access_token: token.access_token,
+                    refresh_token: Some(token.refresh_token),
+                    expires_at: Some(token.expires_at),
+                }
+            }
+        };
+
+        save_cached_token(&self.token_cache_path, &refreshed)?;
+        let access_token = refreshed.access_token.clone();
+        *token = refreshed;
+        Ok(access_token)
     }
 }

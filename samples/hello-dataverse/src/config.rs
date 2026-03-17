@@ -5,11 +5,7 @@ use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct Secrets {
-    pub client_id: String,
-    pub client_secret: String,
-    pub scope: String,
-    pub dataverse_url: String,
-    pub tenant_id: String,
+    pub connection_string: String,
 }
 
 pub fn load_secrets() -> Result<Secrets, String> {
@@ -19,7 +15,7 @@ pub fn load_secrets() -> Result<Secrets, String> {
 }
 
 fn read_secrets(path: &PathBuf) -> Result<Secrets, String> {
-    let contents = fs::read_to_string(path)
-        .map_err(|e| format!("Failed to read secrets.json: {e}"))?;
+    let contents =
+        fs::read_to_string(path).map_err(|e| format!("Failed to read secrets.json: {e}"))?;
     serde_json::from_str(&contents).map_err(|e| format!("Invalid secrets.json: {e}"))
 }
