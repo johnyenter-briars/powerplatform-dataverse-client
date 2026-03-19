@@ -22,6 +22,7 @@ The **long term** goal for this project is feature parity with the [Microsoft.Po
 | [FetchXML count helper](doc/fetchxml.md) | ✅ |
 | [Entity definitions metadata](doc/metadata.md) | ✅ |
 | [Entity attributes metadata](doc/metadata.md) | ✅ |
+| [Entity relationships metadata](doc/metadata.md) | ✅ |
 | Entity identity fields (id/logical/name via convention) | ✅ |
 | Update entity by ID | ✅ |
 | Delete entity by ID | ✅ |
@@ -85,6 +86,7 @@ Feature documentation:
 - `retrieve_multiple_fetchxml_count`
 - `list_entity_definitions`
 - `list_entity_attributes`
+- `list_entity_relationships`
 - `update_entity`
 - `update_entity_with_options`
 - `delete_entity`
@@ -120,16 +122,17 @@ let request_parameters = RequestParameters {
 | GUID / Primary Entity ID | ✅ | `Uuid` |
 | `Int` | ✅ | `Value::Int(i64)` |
 | `Float` | ✅ | `Value::Float(f64)` |
+| `Decimal` | ✅ | `Value::Decimal(Decimal)` |
 | `String` | ✅ | `Value::String(String)` |
 | `Boolean` | ✅ | `Value::Boolean(bool)` |
+| Date/time | ✅ | `Value::DateTime(DateTime<Utc>)` |
+| GUID column | ✅ | `Value::Guid(Uuid)` |
+| Money | ✅ | `Value::Money(Money)` |
+| Option sets / labeled values | ✅ | `Value::OptionSetValue(OptionSetValue)` |
+| Multi-select | ✅ | `Value::OptionSetValueCollection(OptionSetValueCollection)` |
 | `Null` | ✅ | `Value::Null` |
 | Lookups / entity references | ✅ | `Value::EntityReference(EntityReference)` |
 | Polymorphic lookups | ⏳ | N/A |
-| Option sets / labeled values | ⏳ | N/A |
-| Multi-select | ⏳ | N/A |
-| Date/time | ⏳ | N/A |
-| Floating Point Number | ⏳ | N/A |
-| Money | ⏳ | N/A |
 | Aliased values | ❌ | N/A |
 | EntityList | ❌ | N/A |
 
@@ -148,6 +151,7 @@ cargo run
 - [Device code auth scenario](samples/v1-features/src/scenarios/device_code_auth.rs)
 - [Client credentials auth scenario](samples/v1-features/src/scenarios/client_credentials_auth.rs)
 - [Metadata scenario](samples/v1-features/src/scenarios/metadata.rs)
+- [Data types scenario](samples/v1-features/src/scenarios/data_types.rs)
 - [FetchXML scenario](samples/v1-features/src/scenarios/fetchxml.rs)
 - [Refresh demo scenario](samples/v1-features/src/scenarios/refresh_demo.rs)
 

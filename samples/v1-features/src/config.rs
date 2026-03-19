@@ -11,6 +11,18 @@ pub struct Secrets {
     pub client_credentials_connection_string: String,
 }
 
+pub const BUILTIN_SAMPLE_TABLES: &[&str] = &[
+    "account",
+    "contact",
+    "email",
+    "activitypointer",
+    "incident",
+    "lead",
+    "opportunity",
+    "systemuser",
+    "task",
+];
+
 pub fn load_secrets() -> Result<Secrets, String> {
     let mut path = std::env::current_dir().map_err(|e| e.to_string())?;
     path.push("secrets.json");

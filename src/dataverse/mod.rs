@@ -1,6 +1,7 @@
 pub mod entity;
 pub mod entityattribute;
 pub mod entitydefinition;
+pub mod entityrelationship;
 pub mod fetchxml;
 pub mod parse;
 /// Request parameter helpers for Dataverse create and update operations.

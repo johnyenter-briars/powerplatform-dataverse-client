@@ -1,5 +1,12 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AttributeTypeName {
+    /// OData payload shape: { "Value": "MoneyType" }
+    #[serde(rename = "Value")]
+    pub value: Option<String>,
+}
+
 /// Dataverse attribute metadata.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct EntityAttribute {
@@ -12,6 +19,9 @@ pub struct EntityAttribute {
     /// Attribute type name.
     #[serde(rename = "AttributeType")]
     pub attribute_type: Option<String>,
+    /// Specific attribute type name.
+    #[serde(rename = "AttributeTypeName")]
+    pub attribute_type_name: Option<AttributeTypeName>,
     /// True if the attribute is custom.
     #[serde(rename = "IsCustomAttribute")]
     pub is_custom_attribute: Option<bool>,
