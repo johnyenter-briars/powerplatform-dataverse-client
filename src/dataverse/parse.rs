@@ -173,6 +173,7 @@ pub(crate) fn parse_entities_from_response(
             }
         }
 
+        apply_lookup_attribute_annotations(&mut entity.attributes, record);
         apply_formatted_value_names(&mut entity.attributes, record);
 
         entities.push(entity);
@@ -426,6 +427,49 @@ fn apply_formatted_value_names(
         if let OptionSetSingle(option) = attribute {
             option.name = Some(formatted.to_string());
         }
+    }
+}
+
+fn apply_lookup_attribute_annotations(
+    attributes: &mut HashMap<Attribute, RowValue>,
+    record: &serde_json::Map<std::string::String, Value>,
+) {
+    for (key, value) in record {
+        let Some(base_key) = key.strip_suffix("@Microsoft.Dynamics.CRM.lookuplogicalname") else {
+            continue;
+        };
+
+        if base_key.starts_with('_') {
+            continue;
+        }
+
+        let Some(logical_name) = value.as_str() else {
+            continue;
+        };
+
+        let Some(attribute) = attributes.get_mut(base_key) else {
+            continue;
+        };
+
+        let RowValue::String(id_value) = attribute else {
+            continue;
+        };
+
+        let Ok(id) = Uuid::parse_str(id_value) else {
+            continue;
+        };
+
+        let formatted_key = format!("{base_key}{FORMATTED_VALUE_SUFFIX}");
+        let name = record
+            .get(&formatted_key)
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string());
+
+        *attribute = EntityRefValue(EntityReference {
+            id,
+            logical_name: logical_name.to_string(),
+            name,
+        });
     }
 }
 
