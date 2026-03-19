@@ -18,6 +18,8 @@ use crate::dataverse::entity::{
 use crate::dataverse::entityattribute::EntityAttribute;
 use uuid::Uuid;
 
+const FORMATTED_VALUE_SUFFIX: &str = "@OData.Community.Display.V1.FormattedValue";
+
 /// Determine if a Dataverse response indicates more records.
 pub(crate) fn parse_more_records(json: &Value) -> bool {
     match json.get("@Microsoft.Dynamics.CRM.morerecords") {
@@ -148,6 +150,12 @@ pub(crate) fn parse_entities_from_response(
                 .and_then(|value| value.as_str())
                 .map(|value| value.to_string());
 
+            if let Some(name) = name.as_ref() {
+                entity
+                    .attributes
+                    .insert(format!("{base}name"), String(name.clone()));
+            }
+
             if let Some(logical_name) = logical_name {
                 let id = Uuid::parse_str(id_value)
                     .map_err(|_| "Invalid response from Dataverse".to_string())?;
@@ -164,6 +172,8 @@ pub(crate) fn parse_entities_from_response(
                 entity.attributes.insert(base, String(id_value.to_string()));
             }
         }
+
+        apply_formatted_value_names(&mut entity.attributes, record);
 
         entities.push(entity);
     }
@@ -271,7 +281,7 @@ fn parse_typed_attribute_value(
         })),
         "Picklist" | "PicklistType" | "State" | "StateType" | "Status" | "StatusType" => {
             Ok(parse_i32_value(value).map(|value| {
-                OptionSetSingle(OptionSetValue { value })
+                OptionSetSingle(OptionSetValue { value, name: None })
             }))
         }
         "MultiSelectPicklist" | "MultiSelectPicklistType" => {
@@ -390,6 +400,33 @@ fn lookup_base_attribute(key: &str) -> Option<std::string::String> {
     }
 
     Some(trimmed.to_string())
+}
+
+fn apply_formatted_value_names(
+    attributes: &mut HashMap<Attribute, RowValue>,
+    record: &serde_json::Map<std::string::String, Value>,
+) {
+    if !record.keys().any(|key| key.ends_with(FORMATTED_VALUE_SUFFIX)) {
+        return;
+    }
+
+    for (key, value) in record {
+        let Some(base_key) = key.strip_suffix(FORMATTED_VALUE_SUFFIX) else {
+            continue;
+        };
+
+        let Some(formatted) = value.as_str() else {
+            continue;
+        };
+
+        let Some(attribute) = attributes.get_mut(base_key) else {
+            continue;
+        };
+
+        if let OptionSetSingle(option) = attribute {
+            option.name = Some(formatted.to_string());
+        }
+    }
 }
 
 fn infer_logical_name(entity_set: &str) -> std::string::String {
