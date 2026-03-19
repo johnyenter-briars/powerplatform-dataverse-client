@@ -1,12 +1,21 @@
 use std::collections::HashMap;
+use std::str::FromStr;
 
+use chrono::{DateTime, Utc};
 use log::warn;
+use rust_decimal::Decimal;
 use serde_json::Value;
 
 use crate::dataverse::entity::Value::{
-    Boolean, EntityReference as EntityRefValue, Float, Int, Null, String,
+    Boolean, DateTime as DateTimeValue, Decimal as DecimalValue,
+    EntityReference as EntityRefValue, Float, Guid as GuidValue, Int, Money as MoneyValue, Null,
+    OptionSetValue as OptionSetSingle, OptionSetValueCollection as OptionSetMany, String,
 };
-use crate::dataverse::entity::{Attribute, Entity, EntityReference, Value as RowValue};
+use crate::dataverse::entity::{
+    Attribute, Entity, EntityReference, Money, OptionSetValue, OptionSetValueCollection,
+    Value as RowValue,
+};
+use crate::dataverse::entityattribute::EntityAttribute;
 use uuid::Uuid;
 
 /// Determine if a Dataverse response indicates more records.
@@ -37,6 +46,7 @@ pub(crate) fn parse_entities_from_response(
     json: &Value,
     entity_set: &str,
     primary_id_attribute: Option<&str>,
+    entity_attributes: Option<&HashMap<std::string::String, EntityAttribute>>,
 ) -> Result<Vec<Entity>, std::string::String> {
     let response_object = json
         .as_object()
@@ -100,7 +110,14 @@ pub(crate) fn parse_entities_from_response(
                 continue;
             }
 
-            let implemented = add_attribute(&mut entity.attributes, key, value)
+            let implemented = add_attribute(
+                &mut entity.attributes,
+                key,
+                value,
+                entity_attributes.and_then(|attributes| {
+                    attributes.get(&normalize_attribute_name(key))
+                }),
+            )
                 .map_err(|_| "Invalid response from Dataverse".to_string())?;
 
             if !implemented {
@@ -174,10 +191,18 @@ fn add_attribute(
     attributes: &mut HashMap<Attribute, RowValue>,
     key: &str,
     value: &Value,
+    attribute: Option<&EntityAttribute>,
 ) -> Result<bool, std::string::String> {
     if value.is_null() {
         attributes.insert(key.to_string(), Null);
         return Ok(true);
+    }
+
+    if let Some(attribute_type) = attribute_type_key(attribute) {
+        if let Some(parsed) = parse_typed_attribute_value(value, attribute_type)? {
+            attributes.insert(key.to_string(), parsed);
+            return Ok(true);
+        }
     }
 
     if value.is_i64() {
@@ -225,6 +250,133 @@ fn add_attribute(
     }
 
     Ok(true)
+}
+
+fn parse_typed_attribute_value(
+    value: &Value,
+    attribute_type: &str,
+) -> Result<Option<RowValue>, std::string::String> {
+    match attribute_type {
+        "BigInt" | "BigIntType" => Ok(parse_i64_value(value).map(Int)),
+        "Boolean" | "BooleanType" => Ok(parse_bool_value(value).map(Boolean)),
+        "DateTime" | "DateTimeType" => Ok(parse_datetime_value(value).map(DateTimeValue)),
+        "Decimal" | "DecimalType" => Ok(parse_decimal_value(value).map(DecimalValue)),
+        "Double" | "DoubleType" => Ok(parse_f64_value(value).map(Float)),
+        "Integer" | "IntegerType" => Ok(parse_i64_value(value).map(Int)),
+        "Guid" | "Uniqueidentifier" | "UniqueidentifierType" => {
+            Ok(parse_guid_value(value).map(GuidValue))
+        }
+        "Money" | "MoneyType" => Ok(parse_decimal_value(value).map(|value| {
+            MoneyValue(Money { value })
+        })),
+        "Picklist" | "PicklistType" | "State" | "StateType" | "Status" | "StatusType" => {
+            Ok(parse_i32_value(value).map(|value| {
+                OptionSetSingle(OptionSetValue { value })
+            }))
+        }
+        "MultiSelectPicklist" | "MultiSelectPicklistType" => {
+            Ok(parse_multi_select_value(value).map(|values| {
+                OptionSetMany(OptionSetValueCollection { values })
+            }))
+        }
+        "Customer"
+        | "CustomerType"
+        | "Lookup"
+        | "LookupType"
+        | "Owner"
+        | "OwnerType"
+        | "PartyList"
+        | "PartyListType" => Ok(None),
+        "String"
+        | "StringType"
+        | "Memo"
+        | "MemoType"
+        | "EntityName"
+        | "EntityNameType"
+        | "Image"
+        | "ImageType"
+        | "File"
+        | "FileType" => Ok(value.as_str().map(|value| String(value.to_string()))),
+        _ => Ok(None),
+    }
+}
+
+fn attribute_type_key(attribute: Option<&EntityAttribute>) -> Option<&str> {
+    attribute
+        .and_then(|attribute| {
+            attribute
+                .attribute_type_name
+                .as_ref()
+                .and_then(|value| value.value.as_deref())
+                .or(attribute.attribute_type.as_deref())
+        })
+}
+
+fn normalize_attribute_name(value: &str) -> std::string::String {
+    value.to_ascii_lowercase()
+}
+
+fn parse_i64_value(value: &Value) -> Option<i64> {
+    value
+        .as_i64()
+        .or_else(|| value.as_u64().and_then(|value| i64::try_from(value).ok()))
+}
+
+fn parse_i32_value(value: &Value) -> Option<i32> {
+    parse_i64_value(value).and_then(|value| i32::try_from(value).ok())
+}
+
+fn parse_f64_value(value: &Value) -> Option<f64> {
+    value
+        .as_f64()
+        .or_else(|| value.as_i64().map(|value| value as f64))
+        .or_else(|| value.as_u64().map(|value| value as f64))
+}
+
+fn parse_bool_value(value: &Value) -> Option<bool> {
+    value.as_bool()
+}
+
+fn parse_decimal_value(value: &Value) -> Option<Decimal> {
+    match value {
+        Value::Number(number) => Decimal::from_str(&number.to_string()).ok(),
+        Value::String(value) => Decimal::from_str(value).ok(),
+        _ => None,
+    }
+}
+
+fn parse_datetime_value(value: &Value) -> Option<DateTime<Utc>> {
+    value
+        .as_str()
+        .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
+        .map(|value| value.with_timezone(&Utc))
+}
+
+fn parse_guid_value(value: &Value) -> Option<Uuid> {
+    value
+        .as_str()
+        .and_then(|value| Uuid::parse_str(value).ok())
+}
+
+fn parse_multi_select_value(value: &Value) -> Option<Vec<i32>> {
+    match value {
+        Value::String(value) => {
+            let parsed: Vec<i32> = value
+                .split(',')
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .filter_map(|value| value.parse::<i32>().ok())
+                .collect();
+            Some(parsed)
+        }
+        Value::Array(values) => Some(
+            values
+                .iter()
+                .filter_map(parse_i32_value)
+                .collect(),
+        ),
+        _ => None,
+    }
 }
 
 fn lookup_base_attribute(key: &str) -> Option<std::string::String> {

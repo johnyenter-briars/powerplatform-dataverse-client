@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use chrono::{DateTime, Utc};
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -11,14 +13,47 @@ pub enum Value {
     Int(i64),
     /// Floating point value.
     Float(f64),
+    /// Exact decimal value.
+    Decimal(Decimal),
     /// String value.
     String(String),
     /// Boolean value.
     Boolean(bool),
+    /// Date/time value.
+    DateTime(DateTime<Utc>),
+    /// GUID value.
+    Guid(Uuid),
+    /// Money value.
+    Money(Money),
+    /// Single choice/status/state value.
+    OptionSetValue(OptionSetValue),
+    /// Multi-select choice value.
+    OptionSetValueCollection(OptionSetValueCollection),
     /// Null value.
     Null,
     /// Entity reference value (lookup).
     EntityReference(EntityReference),
+}
+
+/// Dataverse money value.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Money {
+    /// Monetary amount.
+    pub value: Decimal,
+}
+
+/// Dataverse single option-set value.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct OptionSetValue {
+    /// Numeric option value.
+    pub value: i32,
+}
+
+/// Dataverse multi-select option-set value.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct OptionSetValueCollection {
+    /// Numeric option values.
+    pub values: Vec<i32>,
 }
 
 /// Reference to another Dataverse entity.

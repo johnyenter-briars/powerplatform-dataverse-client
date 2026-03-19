@@ -49,6 +49,12 @@ async fn main() -> Result<(), String> {
             run: scenarios::metadata::run,
         },
         Scenario {
+            id: "data-types",
+            name: "data types",
+            connection_string: |secrets| &secrets.client_credentials_connection_string,
+            run: scenarios::data_types::run,
+        },
+        Scenario {
             id: "fetchxml",
             name: "fetchxml",
             connection_string: |secrets| &secrets.client_credentials_connection_string,

@@ -82,6 +82,7 @@ pub struct ServiceClient {
     token_cache_path: PathBuf,
     token: Mutex<CachedToken>,
     entity_definitions_cache: Mutex<Option<Vec<EntityDefinition>>>,
+    entity_attributes_cache: Mutex<HashMap<String, Vec<EntityAttribute>>>,
     log_level: LogLevel,
 }
 
@@ -127,6 +128,7 @@ impl ServiceClient {
             token_cache_path,
             token: Mutex::new(token),
             entity_definitions_cache: Mutex::new(None),
+            entity_attributes_cache: Mutex::new(HashMap::new()),
             log_level,
         })
     }
@@ -144,9 +146,15 @@ impl ServiceClient {
         fetchxml: &str,
     ) -> Result<Vec<Entity>, std::string::String> {
         let primary_id_attribute = self.resolve_primary_id_attribute(entity).await?;
+        let attribute_map = self.entity_attribute_map(entity).await?;
         if fetch_tag_has_attr(fetchxml, "top")? {
             return self
-                .retrieve_multiple_fetchxml_single(entity, fetchxml, primary_id_attribute.as_deref())
+                .retrieve_multiple_fetchxml_single(
+                    entity,
+                    fetchxml,
+                    primary_id_attribute.as_deref(),
+                    Some(&attribute_map),
+                )
                 .await;
         }
 
@@ -200,8 +208,12 @@ impl ServiceClient {
                 .await
                 .map_err(|e| format!("Failed to parse JSON: {e}"))?;
 
-            let mut page_entities =
-                parse_entities_from_response(&json, entity, primary_id_attribute.as_deref())?;
+            let mut page_entities = parse_entities_from_response(
+                &json,
+                entity,
+                primary_id_attribute.as_deref(),
+                Some(&attribute_map),
+            )?;
             let start_index = entities.len();
             for (offset, entity) in page_entities.iter_mut().enumerate() {
                 let row_number = (start_index + offset + 1) as i64;
@@ -231,7 +243,7 @@ impl ServiceClient {
     ) -> Result<usize, std::string::String> {
         if fetch_tag_has_attr(fetchxml, "top")? {
             let resp = self
-                .retrieve_multiple_fetchxml_single(entity, fetchxml, None)
+                .retrieve_multiple_fetchxml_single(entity, fetchxml, None, None)
                 .await?;
             return Ok(resp.len());
         }
@@ -306,6 +318,7 @@ impl ServiceClient {
         entity: &str,
         fetchxml: &str,
         primary_id_attribute: Option<&str>,
+        entity_attributes: Option<&HashMap<String, EntityAttribute>>,
     ) -> Result<Vec<Entity>, std::string::String> {
         if self.log_level.includes_debug() {
             debug!("FetchXML: {}", fetchxml);
@@ -345,7 +358,7 @@ impl ServiceClient {
             .await
             .map_err(|e| format!("Failed to parse JSON: {e}"))?;
 
-        parse_entities_from_response(&json, entity, primary_id_attribute)
+        parse_entities_from_response(&json, entity, primary_id_attribute, entity_attributes)
     }
 
     /// List all entity definitions.
@@ -398,9 +411,16 @@ impl ServiceClient {
         &self,
         logical_name: &str,
     ) -> Result<Vec<EntityAttribute>, std::string::String> {
+        {
+            let cache = self.entity_attributes_cache.lock().await;
+            if let Some(value) = cache.get(&normalize_entity_name(logical_name)) {
+                return Ok(value.clone());
+            }
+        }
+
         let logical = logical_name.replace('\'', "''");
         let url = format!(
-            "{}/api/data/v9.2/EntityDefinitions(LogicalName='{}')/Attributes?$select=LogicalName,SchemaName,AttributeType,IsCustomAttribute,IsValidODataAttribute,IsValidForRead,IsValidForUpdate&$filter=IsValidODataAttribute eq true and IsValidForRead eq true",
+            "{}/api/data/v9.2/EntityDefinitions(LogicalName='{}')/Attributes?$select=LogicalName,SchemaName,AttributeType,AttributeTypeName,IsCustomAttribute,IsValidODataAttribute,IsValidForRead,IsValidForUpdate&$filter=IsValidODataAttribute eq true and IsValidForRead eq true",
             self.base_url, logical
         );
 
@@ -426,7 +446,11 @@ impl ServiceClient {
             .await
             .map_err(|e| format!("Failed to parse JSON: {e}"))?;
 
-        Ok(parsed.value)
+        let value = parsed.value;
+        let mut cache = self.entity_attributes_cache.lock().await;
+        cache.insert(normalize_entity_name(logical_name), value.clone());
+
+        Ok(value)
     }
 
     /// List entity relationships for a given logical name.
@@ -677,6 +701,36 @@ impl ServiceClient {
                     || normalize_entity_name(&definition.schema_name) == target
             })
             .and_then(|definition| definition.primary_id_attribute))
+    }
+
+    async fn resolve_entity_logical_name(&self, entity_name: &str) -> Result<String, String> {
+        let definitions = self.list_entity_definitions().await?;
+        let target = normalize_entity_name(entity_name);
+
+        definitions
+            .into_iter()
+            .find(|definition| {
+                normalize_entity_name(&definition.entity_set_name) == target
+                    || normalize_entity_name(&definition.logical_name) == target
+                    || normalize_entity_name(&definition.schema_name) == target
+            })
+            .map(|definition| definition.logical_name)
+            .ok_or_else(|| format!("Entity metadata not found for '{}'", entity_name))
+    }
+
+    async fn entity_attribute_map(
+        &self,
+        entity_name: &str,
+    ) -> Result<HashMap<String, EntityAttribute>, String> {
+        let logical_name = self.resolve_entity_logical_name(entity_name).await?;
+        let attributes = self.list_entity_attributes(&logical_name).await?;
+        let mut map = HashMap::new();
+        for attribute in attributes {
+            map.insert(attribute.logical_name.to_ascii_lowercase(), attribute.clone());
+            map.entry(attribute.schema_name.to_ascii_lowercase())
+                .or_insert(attribute);
+        }
+        Ok(map)
     }
 }
 

@@ -31,6 +31,7 @@ cargo run -- --scenario metadata,fetchxml
 - `device-code-auth`
 - `client-credentials-auth`
 - `metadata`
+- `data-types`
 - `fetchxml`
 - `refresh-demo`
 
@@ -39,3 +40,5 @@ The `metadata` scenario exercises:
 - `list_entity_definitions`
 - `list_entity_attributes`
 - `list_entity_relationships`
+
+The `data-types` scenario scans metadata for supported Dataverse field types, finds the first non-null sample value it can retrieve for each type, and prints the typed Rust value.
