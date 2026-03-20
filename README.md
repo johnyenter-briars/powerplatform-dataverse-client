@@ -24,15 +24,15 @@ The **long term** goal for this project is feature parity with the [Microsoft.Po
 | [Entity attributes metadata](doc/metadata.md) | ✅ |
 | [Entity relationships metadata](doc/metadata.md) | ✅ |
 | Entity identity fields (id/logical/name via convention) | ✅ |
+| Create entity | ✅ |
 | Update entity by ID | ✅ |
 | Delete entity by ID | ✅ |
+| Batch operations (`ExecuteMultiple`-style) | ✅ |
+| Request / Response Objects (`CreateRequest`, `UpdateRequest`, `DeleteRequest`, `ExecuteMultipleRequest`) | ✅ |
 | Bypass Custom Logic params | ✅ |
-| Create entity | ❌ |
 | Retrieve entity by ID | ❌ |
 | Entity multi-identity fields | ❌ |
-| Batch operations | ❌ |
 | Retry/backoff | ❌ |
-| Request / Response Objects (Replicating the C# SDK) | ❌ |
 | OData query syntax (non-FetchXML) | ❌ |
 | Expanded navigation properties | ❌ |
 
@@ -89,8 +89,49 @@ Feature documentation:
 - `list_entity_relationships`
 - `update_entity`
 - `update_entity_with_options`
+- `create_entity`
+- `create_entity_with_options`
 - `delete_entity`
 - `delete_entity_with_options`
+- `execute_multiple`
+
+## ExecuteMultiple
+
+The client now includes SDK-shaped request/response types for batched write operations:
+
+- `CreateRequest`
+- `UpdateRequest`
+- `DeleteRequest`
+- `ExecuteMultipleRequest`
+- `ExecuteMultipleResponse`
+
+These requests are executed through the Dataverse Web API `$batch` endpoint and mirror the broad behavior of the .NET SDK `ExecuteMultiple` pattern:
+
+- requests run in order
+- `continue_on_error` maps to the batch `Prefer: odata.continue-on-error` header
+- `return_responses` controls whether successful items are surfaced in the client response
+
+```rust
+use powerplatform_dataverse_client::dataverse::batch::{
+    ExecuteMultipleRequest, ExecuteMultipleSettings, OrganizationRequest, UpdateRequest,
+};
+use powerplatform_dataverse_client::dataverse::entity::{Entity, Value};
+
+let mut account = Entity::new(account_id, "account", None);
+account
+    .attributes
+    .insert("tickersymbol".to_string(), Value::String("MSFT".to_string()));
+
+let response = client
+    .execute_multiple(&ExecuteMultipleRequest {
+        settings: ExecuteMultipleSettings {
+            continue_on_error: false,
+            return_responses: false,
+        },
+        requests: vec![OrganizationRequest::Update(UpdateRequest::new(account))],
+    })
+    .await?;
+```
 
 ## RequestParameters
 
@@ -154,6 +195,7 @@ cargo run
 - [Data types scenario](samples/v1-features/src/scenarios/data_types.rs)
 - [FetchXML scenario](samples/v1-features/src/scenarios/fetchxml.rs)
 - [Refresh demo scenario](samples/v1-features/src/scenarios/refresh_demo.rs)
+- [Batch scenario](samples/v1-features/src/scenarios/batch.rs)
 
 ## Contributing
 
