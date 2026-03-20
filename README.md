@@ -60,7 +60,7 @@ async fn main() -> Result<(), String> {
     "#;
 
     let entities = client
-        .retrieve_multiple_fetchxml("accounts", fetchxml)
+        .retrieve_multiple_fetchxml_paging("accounts", fetchxml)
         .await?;
 
     println!("Records: {}", entities.len());
@@ -83,6 +83,7 @@ Feature documentation:
 - `new`
 - `new_with_auth`
 - `retrieve_multiple_fetchxml`
+- `retrieve_multiple_fetchxml_paging`
 - `retrieve_multiple_fetchxml_count`
 - `list_entity_definitions`
 - `list_entity_attributes`
@@ -173,7 +174,7 @@ let request_parameters = RequestParameters {
 | Multi-select | ✅ | `Value::OptionSetValueCollection(OptionSetValueCollection)` |
 | `Null` | ✅ | `Value::Null` |
 | Lookups / entity references | ✅ | `Value::EntityReference(EntityReference)` |
-| Polymorphic lookups | ⏳ | N/A |
+| Polymorphic lookups | ✅ | `Value::EntityReference(EntityReference)` |
 | Aliased values | ❌ | N/A |
 | EntityList | ❌ | N/A |
 

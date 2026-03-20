@@ -12,18 +12,21 @@ const BATCH_SIZE: usize = 200;
 
 pub fn run(client: &ServiceClient) -> Pin<Box<dyn Future<Output = Result<(), String>> + '_>> {
     Box::pin(async move {
-        let fetchxml = format!(
-            r#"
-        <fetch top="{MAX_RECORDS}">
+        let fetchxml = r#"
+        <fetch>
             <entity name="account">
                 <attribute name="accountid" />
                 <attribute name="tickersymbol" />
             </entity>
         </fetch>
-    "#
-        );
+    "#;
 
-        let accounts = client.retrieve_multiple_fetchxml("accounts", &fetchxml).await?;
+        let mut accounts = client
+            .retrieve_multiple_fetchxml_paging("accounts", fetchxml)
+            .await?;
+        if accounts.len() > MAX_RECORDS {
+            accounts.truncate(MAX_RECORDS);
+        }
         if accounts.is_empty() {
             println!("No account records found for batch scenario.");
             return Ok(());

@@ -146,8 +146,25 @@ impl ServiceClient {
         DateTime::<Utc>::from_timestamp(expires_at as i64, 0)
     }
 
-    /// Retrieve multiple records by FetchXML, handling paging when needed.
+    /// Retrieve a single FetchXML response page without automatic paging.
     pub async fn retrieve_multiple_fetchxml(
+        &self,
+        entity: &str,
+        fetchxml: &str,
+    ) -> Result<Vec<Entity>, std::string::String> {
+        let primary_id_attribute = self.resolve_primary_id_attribute(entity).await?;
+        let attribute_map = self.entity_attribute_map(entity).await?;
+        self.retrieve_multiple_fetchxml_single(
+            entity,
+            fetchxml,
+            primary_id_attribute.as_deref(),
+            Some(&attribute_map),
+        )
+        .await
+    }
+
+    /// Retrieve multiple records by FetchXML, automatically paging until all results are returned.
+    pub async fn retrieve_multiple_fetchxml_paging(
         &self,
         entity: &str,
         fetchxml: &str,
