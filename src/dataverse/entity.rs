@@ -47,6 +47,8 @@ pub struct Money {
 pub struct OptionSetValue {
     /// Numeric option value.
     pub value: i32,
+    /// Display label for the option, when provided.
+    pub name: Option<String>,
 }
 
 /// Dataverse multi-select option-set value.

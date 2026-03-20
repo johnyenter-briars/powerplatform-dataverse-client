@@ -147,7 +147,10 @@ fn format_value(value: &Value) -> String {
         Value::DateTime(value) => value.to_rfc3339(),
         Value::Guid(value) => value.to_string(),
         Value::Money(value) => value.value.to_string(),
-        Value::OptionSetValue(value) => value.value.to_string(),
+        Value::OptionSetValue(value) => match &value.name {
+            Some(name) => format!("{} ({})", value.value, name),
+            None => value.value.to_string(),
+        },
         Value::OptionSetValueCollection(value) => format!("{:?}", value.values),
         Value::Null => "null".to_string(),
         Value::EntityReference(reference) => format!(
