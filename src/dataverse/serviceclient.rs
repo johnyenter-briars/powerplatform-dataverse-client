@@ -169,17 +169,34 @@ impl ServiceClient {
         entity: &str,
         fetchxml: &str,
     ) -> Result<Vec<Entity>, std::string::String> {
+        self.retrieve_multiple_fetchxml_paging_with_progress(entity, fetchxml, |_, _| {})
+            .await
+    }
+
+    /// Retrieve multiple records by FetchXML, automatically paging until all results are returned.
+    /// Reports page-level progress as `(page_number, total_records_retrieved_so_far)`.
+    pub async fn retrieve_multiple_fetchxml_paging_with_progress<F>(
+        &self,
+        entity: &str,
+        fetchxml: &str,
+        mut on_progress: F,
+    ) -> Result<Vec<Entity>, std::string::String>
+    where
+        F: FnMut(usize, usize),
+    {
         let primary_id_attribute = self.resolve_primary_id_attribute(entity).await?;
         let attribute_map = self.entity_attribute_map(entity).await?;
         if fetch_tag_has_attr(fetchxml, "top")? {
-            return self
+            let entities = self
                 .retrieve_multiple_fetchxml_single(
                     entity,
                     fetchxml,
                     primary_id_attribute.as_deref(),
                     Some(&attribute_map),
                 )
-                .await;
+                .await?;
+            on_progress(1, entities.len());
+            return Ok(entities);
         }
 
         let mut page = 1;
@@ -246,6 +263,7 @@ impl ServiceClient {
                     .insert(ROW_NUMBER_ATTRIBUTE.to_string(), Int(row_number));
             }
             entities.extend(page_entities);
+            on_progress(page as usize, entities.len());
 
             let more_records = parse_more_records(&json);
             if !more_records {
