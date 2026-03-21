@@ -30,6 +30,7 @@ cargo run -- --scenario metadata,fetchxml
 
 - `device-code-auth`
 - `client-credentials-auth`
+- `batch`
 - `metadata`
 - `data-types`
 - `fetchxml`
@@ -42,3 +43,5 @@ The `metadata` scenario exercises:
 - `list_entity_relationships`
 
 The `data-types` scenario scans metadata for supported Dataverse field types, finds the first non-null sample value it can retrieve for each type, and prints the typed Rust value.
+
+The `batch` scenario retrieves up to 10,000 accounts and updates their `tickersymbol` values in `ExecuteMultiple` batches of 200 requests.

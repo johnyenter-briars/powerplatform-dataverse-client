@@ -4,10 +4,12 @@ use std::path::PathBuf;
 use chrono::{DateTime, Utc};
 use log::debug;
 use reqwest::Client;
+use reqwest::header::CONTENT_TYPE;
 use serde::de::DeserializeOwned;
 use serde_json::Map;
 use serde_json::Value;
 use tokio::sync::Mutex;
+use uuid::Uuid;
 
 use crate::LogLevel;
 use crate::auth::config::AuthConfig;
@@ -18,6 +20,11 @@ use crate::auth::credentials::{TokenExchange, refresh_device_code_token};
 use crate::auth::token::{
     CachedToken, fetch_token_for_config, is_expiring_soon, load_cached_token,
     resolve_token_cache_file_path, save_cached_token,
+};
+use crate::dataverse::batch::{
+    ExecuteMultipleRequest, ExecuteMultipleResponse, ExecuteMultipleResponseItem,
+    OrganizationRequest, ParsedBatchPart, PreparedBatchItem, PreparedBatchRequest,
+    entity_to_write_body, parse_batch_response_parts, parse_fault,
 };
 use crate::dataverse::entity::Entity;
 use crate::dataverse::entity::Value::Int;
@@ -139,7 +146,7 @@ impl ServiceClient {
         DateTime::<Utc>::from_timestamp(expires_at as i64, 0)
     }
 
-    /// Retrieve multiple records by FetchXML, handling paging when needed.
+    /// Retrieve a single FetchXML response page without automatic paging.
     pub async fn retrieve_multiple_fetchxml(
         &self,
         entity: &str,
@@ -147,15 +154,49 @@ impl ServiceClient {
     ) -> Result<Vec<Entity>, std::string::String> {
         let primary_id_attribute = self.resolve_primary_id_attribute(entity).await?;
         let attribute_map = self.entity_attribute_map(entity).await?;
+        self.retrieve_multiple_fetchxml_single(
+            entity,
+            fetchxml,
+            primary_id_attribute.as_deref(),
+            Some(&attribute_map),
+        )
+        .await
+    }
+
+    /// Retrieve multiple records by FetchXML, automatically paging until all results are returned.
+    pub async fn retrieve_multiple_fetchxml_paging(
+        &self,
+        entity: &str,
+        fetchxml: &str,
+    ) -> Result<Vec<Entity>, std::string::String> {
+        self.retrieve_multiple_fetchxml_paging_with_progress(entity, fetchxml, |_, _| {})
+            .await
+    }
+
+    /// Retrieve multiple records by FetchXML, automatically paging until all results are returned.
+    /// Reports page-level progress as `(page_number, total_records_retrieved_so_far)`.
+    pub async fn retrieve_multiple_fetchxml_paging_with_progress<F>(
+        &self,
+        entity: &str,
+        fetchxml: &str,
+        mut on_progress: F,
+    ) -> Result<Vec<Entity>, std::string::String>
+    where
+        F: FnMut(usize, usize),
+    {
+        let primary_id_attribute = self.resolve_primary_id_attribute(entity).await?;
+        let attribute_map = self.entity_attribute_map(entity).await?;
         if fetch_tag_has_attr(fetchxml, "top")? {
-            return self
+            let entities = self
                 .retrieve_multiple_fetchxml_single(
                     entity,
                     fetchxml,
                     primary_id_attribute.as_deref(),
                     Some(&attribute_map),
                 )
-                .await;
+                .await?;
+            on_progress(1, entities.len());
+            return Ok(entities);
         }
 
         let mut page = 1;
@@ -222,6 +263,7 @@ impl ServiceClient {
                     .insert(ROW_NUMBER_ATTRIBUTE.to_string(), Int(row_number));
             }
             entities.extend(page_entities);
+            on_progress(page as usize, entities.len());
 
             let more_records = parse_more_records(&json);
             if !more_records {
@@ -530,6 +572,54 @@ impl ServiceClient {
             .await
     }
 
+    /// Create a single entity record and return its ID when available.
+    pub async fn create_entity(
+        &self,
+        entity_set: &str,
+        attributes: &HashMap<std::string::String, Value>,
+    ) -> Result<Option<Uuid>, std::string::String> {
+        self.create_entity_with_options(entity_set, attributes, &RequestParameters::default())
+            .await
+    }
+
+    /// Create a single entity record with Dataverse request parameters.
+    pub async fn create_entity_with_options(
+        &self,
+        entity_set: &str,
+        attributes: &HashMap<std::string::String, Value>,
+        options: &RequestParameters,
+    ) -> Result<Option<Uuid>, std::string::String> {
+        let url = format!("{}/api/data/v9.2/{}", self.base_url, entity_set);
+
+        let access_token = self.get_access_token().await?;
+        let request = self
+            .client
+            .post(&url)
+            .bearer_auth(&access_token)
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .json(attributes);
+
+        let resp = options
+            .apply(request)
+            .send()
+            .await
+            .map_err(|e| format!("Request failed: {e}"))?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(format!("Dataverse API error ({}): {}", status, body));
+        }
+
+        Ok(resp
+            .headers()
+            .get("OData-EntityId")
+            .or_else(|| resp.headers().get("Location"))
+            .and_then(|value| value.to_str().ok())
+            .and_then(parse_uuid_from_uri))
+    }
+
     /// Update a single entity record by ID with Dataverse request parameters.
     pub async fn update_entity_with_options(
         &self,
@@ -611,6 +701,73 @@ impl ServiceClient {
         }
 
         Ok(())
+    }
+
+    /// Execute multiple create, update, and delete requests using a single Dataverse batch call.
+    pub async fn execute_multiple(
+        &self,
+        request: &ExecuteMultipleRequest,
+    ) -> Result<ExecuteMultipleResponse, String> {
+        if request.requests.is_empty() {
+            return Ok(ExecuteMultipleResponse::default());
+        }
+
+        if request.requests.len() > 1000 {
+            return Err(format!(
+                "ExecuteMultipleRequest contains {} requests, exceeding the Dataverse batch limit of 1000",
+                request.requests.len()
+            ));
+        }
+
+        let entity_set_name_by_logical_name = self.entity_set_name_map().await?;
+        let prepared_requests = self
+            .prepare_batch_requests(&request.requests, &entity_set_name_by_logical_name)?;
+        let boundary = format!("batch_{}", Uuid::new_v4().as_hyphenated());
+        let body = self.build_batch_body(&boundary, &prepared_requests);
+        let url = format!("{}/api/data/v9.2/$batch", self.base_url);
+        let access_token = self.get_access_token().await?;
+
+        let mut http_request = self
+            .client
+            .post(&url)
+            .bearer_auth(&access_token)
+            .header("OData-MaxVersion", "4.0")
+            .header("OData-Version", "4.0")
+            .header("If-None-Match", "null")
+            .header("Accept", "application/json")
+            .header("Content-Type", format!("multipart/mixed; boundary={boundary}"))
+            .body(body);
+
+        if request.settings.continue_on_error {
+            http_request = http_request.header("Prefer", "odata.continue-on-error");
+        }
+
+        let resp = http_request
+            .send()
+            .await
+            .map_err(|e| format!("Request failed: {e}"))?;
+
+        let status = resp.status();
+        let content_type = resp
+            .headers()
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .map(|value| value.to_string());
+        let response_text = resp
+            .text()
+            .await
+            .map_err(|e| format!("Failed to read batch response: {e}"))?;
+
+        if !status.is_success() && !content_type.as_deref().unwrap_or_default().starts_with("multipart/mixed") {
+            return Err(format!(
+                "Dataverse API error ({}): {}",
+                status,
+                response_text
+            ));
+        }
+
+        let parts = parse_batch_response_parts(content_type.as_deref(), &response_text)?;
+        self.map_batch_response(request, parts)
     }
 
     async fn get_access_token(&self) -> Result<String, String> {
@@ -732,10 +889,194 @@ impl ServiceClient {
         }
         Ok(map)
     }
+
+    async fn entity_set_name_map(&self) -> Result<HashMap<String, String>, String> {
+        let definitions = self.list_entity_definitions().await?;
+        Ok(definitions
+            .into_iter()
+            .map(|definition| {
+                (
+                    definition.logical_name.to_ascii_lowercase(),
+                    definition.entity_set_name,
+                )
+            })
+            .collect())
+    }
+
+    fn prepare_batch_requests(
+        &self,
+        requests: &[OrganizationRequest],
+        entity_set_name_by_logical_name: &HashMap<String, String>,
+    ) -> Result<Vec<PreparedBatchItem>, String> {
+        requests
+            .iter()
+            .enumerate()
+            .map(|(request_index, request)| {
+                self.prepare_batch_request(
+                    request_index,
+                    request.clone(),
+                    entity_set_name_by_logical_name,
+                )
+            })
+            .collect()
+    }
+
+    fn prepare_batch_request(
+        &self,
+        _request_index: usize,
+        request: OrganizationRequest,
+        entity_set_name_by_logical_name: &HashMap<String, String>,
+    ) -> Result<PreparedBatchItem, String> {
+        let prepared = match &request {
+            OrganizationRequest::Create(request) => {
+                let entity_set_name = entity_set_name_by_logical_name
+                    .get(&request.target.logical_name.to_ascii_lowercase())
+                    .ok_or_else(|| {
+                        format!(
+                            "Entity set metadata not found for '{}'",
+                            request.target.logical_name
+                        )
+                    })?;
+
+                PreparedBatchRequest {
+                    method: "POST",
+                    path: format!("/api/data/v9.2/{entity_set_name}"),
+                    body: Some(entity_to_write_body(
+                        &request.target,
+                        entity_set_name_by_logical_name,
+                    )?),
+                    parameters: request.parameters.clone(),
+                }
+            }
+            OrganizationRequest::Update(request) => {
+                if request.target.id.is_nil() {
+                    return Err("UpdateRequest target must include a non-empty entity ID".to_string());
+                }
+
+                let entity_set_name = entity_set_name_by_logical_name
+                    .get(&request.target.logical_name.to_ascii_lowercase())
+                    .ok_or_else(|| {
+                        format!(
+                            "Entity set metadata not found for '{}'",
+                            request.target.logical_name
+                        )
+                    })?;
+
+                PreparedBatchRequest {
+                    method: "PATCH",
+                    path: format!(
+                        "/api/data/v9.2/{}({})",
+                        entity_set_name,
+                        request.target.id.as_hyphenated()
+                    ),
+                    body: Some(entity_to_write_body(
+                        &request.target,
+                        entity_set_name_by_logical_name,
+                    )?),
+                    parameters: request.parameters.clone(),
+                }
+            }
+            OrganizationRequest::Delete(request) => {
+                let entity_set_name = entity_set_name_by_logical_name
+                    .get(&request.target.logical_name.to_ascii_lowercase())
+                    .ok_or_else(|| {
+                        format!(
+                            "Entity set metadata not found for '{}'",
+                            request.target.logical_name
+                        )
+                    })?;
+
+                PreparedBatchRequest {
+                    method: "DELETE",
+                    path: format!(
+                        "/api/data/v9.2/{}({})",
+                        entity_set_name,
+                        request.target.id.as_hyphenated()
+                    ),
+                    body: None,
+                    parameters: request.parameters.clone(),
+                }
+            }
+        };
+
+        Ok(PreparedBatchItem {
+            prepared_request: prepared,
+        })
+    }
+
+    fn build_batch_body(&self, boundary: &str, requests: &[PreparedBatchItem]) -> String {
+        let mut body = String::new();
+
+        for (content_id, item) in requests.iter().enumerate() {
+            body.push_str(&format!("--{boundary}\r\n"));
+            body.push_str("Content-Type: application/http\r\n");
+            body.push_str("Content-Transfer-Encoding: binary\r\n");
+            body.push_str(&format!("Content-ID: {}\r\n\r\n", content_id + 1));
+            body.push_str(&format!(
+                "{} {} HTTP/1.1\r\n",
+                item.prepared_request.method, item.prepared_request.path
+            ));
+            body.push_str("Accept: application/json\r\n");
+
+            for (header, value) in item.prepared_request.parameters.headers() {
+                body.push_str(&format!("{header}: {value}\r\n"));
+            }
+
+            if let Some(payload) = &item.prepared_request.body {
+                body.push_str("Content-Type: application/json;type=entry\r\n\r\n");
+                body.push_str(payload);
+                body.push_str("\r\n");
+            } else {
+                body.push_str("\r\n");
+            }
+        }
+
+        body.push_str(&format!("--{boundary}--\r\n"));
+        body
+    }
+
+    fn map_batch_response(
+        &self,
+        request: &ExecuteMultipleRequest,
+        parts: Vec<ParsedBatchPart>,
+    ) -> Result<ExecuteMultipleResponse, String> {
+        let mut response = ExecuteMultipleResponse::default();
+
+        for (part_index, part) in parts.iter().enumerate() {
+            let Some(source_request) = request.requests.get(part_index) else {
+                break;
+            };
+
+            if part.status_code >= 400 {
+                response.responses.push(ExecuteMultipleResponseItem {
+                    request_index: part_index,
+                    response: None,
+                    fault: Some(parse_fault(part)),
+                });
+                continue;
+            }
+
+            if request.settings.return_responses {
+                response.responses.push(ExecuteMultipleResponseItem {
+                    request_index: part_index,
+                    response: Some(source_request.success_response(&part.headers)),
+                    fault: None,
+                });
+            }
+        }
+
+        Ok(response)
+    }
 }
 
 fn normalize_entity_name(value: &str) -> String {
     value
         .trim_matches(|ch| ch == '[' || ch == ']' || ch == '"' || ch == '`')
         .to_ascii_lowercase()
+}
+
+fn parse_uuid_from_uri(value: &str) -> Option<Uuid> {
+    let start = value.rfind('(')? + 1;
+    let end = value.rfind(')')?;
+    Uuid::parse_str(value[start..end].trim_matches('{').trim_matches('}')).ok()
 }

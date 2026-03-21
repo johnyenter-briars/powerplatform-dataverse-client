@@ -1,3 +1,4 @@
+pub mod batch;
 pub mod entity;
 pub mod entityattribute;
 pub mod entitydefinition;

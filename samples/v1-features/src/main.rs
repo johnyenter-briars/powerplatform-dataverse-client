@@ -31,6 +31,12 @@ struct CliArgs {
 async fn main() -> Result<(), String> {
     let scenarios = [
         Scenario {
+            id: "batch",
+            name: "batch",
+            connection_string: |secrets| &secrets.client_credentials_connection_string,
+            run: scenarios::batch::run,
+        },
+        Scenario {
             id: "device-code-auth",
             name: "device code auth",
             connection_string: |secrets| &secrets.device_code_connection_string,

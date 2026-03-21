@@ -18,18 +18,29 @@ pub struct RequestParameters {
 }
 
 impl RequestParameters {
-    /// Apply the configured Dataverse request parameters to an outgoing request.
-    pub fn apply(&self, mut request: RequestBuilder) -> RequestBuilder {
+    /// Return the Dataverse request headers represented by these parameters.
+    pub fn headers(&self) -> Vec<(&'static str, &'static str)> {
+        let mut headers = Vec::new();
+
         if let Some(value) = self.bypass_business_logic_execution_value() {
-            request = request.header("MSCRM.BypassBusinessLogicExecution", value);
+            headers.push(("MSCRM.BypassBusinessLogicExecution", value));
         }
 
         if self.bypass_custom_plugin_execution {
-            request = request.header("MSCRM.BypassCustomPluginExecution", "true");
+            headers.push(("MSCRM.BypassCustomPluginExecution", "true"));
         }
 
         if self.suppress_callback_registration_expander_job {
-            request = request.header("MSCRM.SuppressCallbackRegistrationExpanderJob", "true");
+            headers.push(("MSCRM.SuppressCallbackRegistrationExpanderJob", "true"));
+        }
+
+        headers
+    }
+
+    /// Apply the configured Dataverse request parameters to an outgoing request.
+    pub fn apply(&self, mut request: RequestBuilder) -> RequestBuilder {
+        for (header, value) in self.headers() {
+            request = request.header(header, value);
         }
 
         // TODO: support specific step id bypassing
