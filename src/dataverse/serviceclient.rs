@@ -40,6 +40,7 @@ use crate::dataverse::requestparameters::RequestParameters;
 
 const ROW_NUMBER_ATTRIBUTE: &str = "__rownum";
 const AGGREGATE_PAGE_SIZE: i32 = 5000;
+const DEFAULT_FETCHXML_PAGE_SIZE: i32 = 5000;
 
 /// OData list wrapper returned by Dataverse metadata endpoints.
 #[derive(Debug, serde::Deserialize)]
@@ -169,21 +170,24 @@ impl ServiceClient {
         entity: &str,
         fetchxml: &str,
     ) -> Result<Vec<Entity>, std::string::String> {
-        self.retrieve_multiple_fetchxml_paging_with_progress(entity, fetchxml, |_, _| {})
+        self.retrieve_multiple_fetchxml_paging_with_progress(entity, fetchxml, |_, _| {}, None)
             .await
     }
 
     /// Retrieve multiple records by FetchXML, automatically paging until all results are returned.
+    /// Uses the provided page size when specified, otherwise defaults to 5000 records per page.
     /// Reports page-level progress as `(page_number, total_records_retrieved_so_far)`.
     pub async fn retrieve_multiple_fetchxml_paging_with_progress<F>(
         &self,
         entity: &str,
         fetchxml: &str,
         mut on_progress: F,
+        page_size: Option<i32>,
     ) -> Result<Vec<Entity>, std::string::String>
     where
         F: FnMut(usize, usize),
     {
+        let page_size = page_size.unwrap_or(DEFAULT_FETCHXML_PAGE_SIZE);
         let primary_id_attribute = self.resolve_primary_id_attribute(entity).await?;
         let attribute_map = self.entity_attribute_map(entity).await?;
         if fetch_tag_has_attr(fetchxml, "top")? {
@@ -204,8 +208,9 @@ impl ServiceClient {
         let mut entities: Vec<Entity> = vec![];
 
         loop {
+            let fetchxml = ensure_fetch_page_size(fetchxml, page_size)?;
             let fetch_with_paging = apply_paging(
-                &ensure_aggregate_page_size(fetchxml, AGGREGATE_PAGE_SIZE)?,
+                &ensure_aggregate_page_size(&fetchxml, AGGREGATE_PAGE_SIZE)?,
                 page,
                 paging_cookie.as_deref(),
             )?;
@@ -1067,6 +1072,26 @@ impl ServiceClient {
 
         Ok(response)
     }
+}
+
+fn ensure_fetch_page_size(fetchxml: &str, page_size: i32) -> Result<String, String> {
+    if fetch_tag_has_attr(fetchxml, "count")? {
+        return Ok(fetchxml.to_string());
+    }
+
+    let fetch_start = fetchxml
+        .find("<fetch")
+        .ok_or_else(|| "FetchXML must start with a <fetch> element".to_string())?;
+    let tag_end = fetchxml[fetch_start..]
+        .find('>')
+        .ok_or_else(|| "FetchXML <fetch> element is not closed".to_string())?
+        + fetch_start;
+
+    let mut inserted = String::new();
+    inserted.push_str(&fetchxml[..tag_end]);
+    inserted.push_str(&format!(" count=\"{page_size}\""));
+    inserted.push_str(&fetchxml[tag_end..]);
+    Ok(inserted)
 }
 
 fn normalize_entity_name(value: &str) -> String {
