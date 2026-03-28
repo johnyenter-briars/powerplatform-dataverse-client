@@ -5,14 +5,11 @@ use std::collections::HashSet;
 use std::future::Future;
 use std::pin::Pin;
 
-use powerplatform_dataverse_client::LogLevel;
-use powerplatform_dataverse_client::dataverse::serviceclient::ServiceClient;
-
 use config::Secrets;
 use config::load_secrets;
 
 type ScenarioFn =
-    for<'a> fn(&'a ServiceClient) -> Pin<Box<dyn Future<Output = Result<(), String>> + 'a>>;
+    for<'a> fn(&'a str) -> Pin<Box<dyn Future<Output = Result<(), String>> + 'a>>;
 
 struct Scenario {
     id: &'static str,
@@ -49,6 +46,12 @@ async fn main() -> Result<(), String> {
             run: scenarios::client_credentials_auth::run,
         },
         Scenario {
+            id: "crud",
+            name: "crud",
+            connection_string: |secrets| &secrets.client_credentials_connection_string,
+            run: scenarios::crud::run,
+        },
+        Scenario {
             id: "metadata",
             name: "metadata",
             connection_string: |secrets| &secrets.client_credentials_connection_string,
@@ -65,6 +68,18 @@ async fn main() -> Result<(), String> {
             name: "fetchxml",
             connection_string: |secrets| &secrets.client_credentials_connection_string,
             run: scenarios::fetchxml::run,
+        },
+        Scenario {
+            id: "request-parameters",
+            name: "request parameters",
+            connection_string: |secrets| &secrets.client_credentials_connection_string,
+            run: scenarios::request_parameters::run,
+        },
+        Scenario {
+            id: "device-code-progress",
+            name: "device code progress",
+            connection_string: |secrets| &secrets.device_code_connection_string,
+            run: scenarios::device_code_progress::run,
         },
         Scenario {
             id: "refresh-demo",
@@ -202,7 +217,6 @@ async fn run_scenario(
     scenario: ScenarioFn,
 ) -> Result<(), String> {
     println!("Running scenario: {name}");
-    let client = ServiceClient::new(connection_string, LogLevel::Information).await?;
-    scenario(&client).await?;
+    scenario(connection_string).await?;
     Ok(())
 }

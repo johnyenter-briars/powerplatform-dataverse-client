@@ -13,76 +13,113 @@ const HEADER_SEPARATOR: &str = "\r\n\r\n";
 
 #[derive(Debug, Clone, Default)]
 pub struct ExecuteMultipleSettings {
+    /// Continue processing later requests when an earlier request fails.
     pub continue_on_error: bool,
+    /// Include per-request success payloads in the batch response when Dataverse provides them.
     pub return_responses: bool,
 }
 
+/// Batch request payload for Dataverse `ExecuteMultiple`-style operations.
 #[derive(Debug, Clone, Default)]
 pub struct ExecuteMultipleRequest {
+    /// Batch execution behavior flags.
     pub settings: ExecuteMultipleSettings,
+    /// Individual create, update, or delete operations to include in the batch.
     pub requests: Vec<OrganizationRequest>,
 }
 
+/// Batch response returned from Dataverse after executing multiple operations.
 #[derive(Debug, Clone, Default)]
 pub struct ExecuteMultipleResponse {
+    /// Per-request outcomes in the same order as the submitted requests.
     pub responses: Vec<ExecuteMultipleResponseItem>,
 }
 
+/// Result for a single request within an `ExecuteMultipleResponse`.
 #[derive(Debug, Clone)]
 pub struct ExecuteMultipleResponseItem {
+    /// Zero-based index of the original request in the submitted batch.
     pub request_index: usize,
+    /// Successful response payload, when `return_responses` was enabled and the request succeeded.
     pub response: Option<OrganizationResponse>,
+    /// Fault details for failed requests.
     pub fault: Option<OrganizationServiceFault>,
 }
 
+/// Error payload for a failed Dataverse batch item.
 #[derive(Debug, Clone)]
 pub struct OrganizationServiceFault {
+    /// HTTP status code returned for the failed item.
     pub status_code: u16,
+    /// Dataverse fault code when present in the response body.
     pub code: Option<String>,
+    /// Human-readable fault message.
     pub message: String,
+    /// Raw HTTP body for callers that need the original Dataverse payload.
     pub raw_body: Option<String>,
 }
 
+/// Supported Dataverse operations for a batch request.
 #[derive(Debug, Clone)]
 pub enum OrganizationRequest {
+    /// Create a new Dataverse row.
     Create(CreateRequest),
+    /// Update an existing Dataverse row.
     Update(UpdateRequest),
+    /// Delete an existing Dataverse row.
     Delete(DeleteRequest),
 }
 
+/// Successful payload for a single `OrganizationRequest`.
 #[derive(Debug, Clone)]
 pub enum OrganizationResponse {
+    /// Create response containing the created row id when Dataverse returns it.
     Create(CreateResponse),
+    /// Update response placeholder for successful updates.
     Update(UpdateResponse),
+    /// Delete response placeholder for successful deletes.
     Delete(DeleteResponse),
 }
 
+/// Create operation inside a batch request.
 #[derive(Debug, Clone)]
 pub struct CreateRequest {
+    /// Entity payload to create.
     pub target: Entity,
+    /// Optional Dataverse headers that affect plugin/business logic execution.
     pub parameters: RequestParameters,
 }
 
+/// Success payload for a batch create request.
 #[derive(Debug, Clone)]
 pub struct CreateResponse {
+    /// Created row id extracted from Dataverse response headers when available.
     pub id: Option<Uuid>,
 }
 
+/// Update operation inside a batch request.
 #[derive(Debug, Clone)]
 pub struct UpdateRequest {
+    /// Entity payload to update. The entity id must already be populated.
     pub target: Entity,
+    /// Optional Dataverse headers that affect plugin/business logic execution.
     pub parameters: RequestParameters,
 }
 
+/// Success payload for a batch update request.
 #[derive(Debug, Clone, Default)]
 pub struct UpdateResponse;
 
+/// Delete operation inside a batch request.
 #[derive(Debug, Clone)]
 pub struct DeleteRequest {
+    /// Entity reference to delete.
     pub target: EntityReference,
+    /// Optional Dataverse headers that affect plugin/business logic execution.
     pub parameters: RequestParameters,
 }
 
+/// Success payload for a batch delete request.
 #[derive(Debug, Clone, Default)]
 pub struct DeleteResponse;
 
@@ -107,6 +144,7 @@ pub(crate) struct ParsedBatchPart {
 }
 
 impl CreateRequest {
+    /// Create a batch create request with default request parameters.
     pub fn new(target: Entity) -> Self {
         Self {
             target,
@@ -116,6 +154,7 @@ impl CreateRequest {
 }
 
 impl UpdateRequest {
+    /// Create a batch update request with default request parameters.
     pub fn new(target: Entity) -> Self {
         Self {
             target,
@@ -125,6 +164,7 @@ impl UpdateRequest {
 }
 
 impl DeleteRequest {
+    /// Create a batch delete request with default request parameters.
     pub fn new(target: EntityReference) -> Self {
         Self {
             target,
@@ -359,7 +399,16 @@ fn parse_fault_json(body: &str) -> Option<(Option<String>, String)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_batch_response_parts, parse_fault};
+    use std::collections::HashMap;
+
+    use rust_decimal::Decimal;
+    use uuid::Uuid;
+
+    use super::{
+        CreateRequest, OrganizationRequest, entity_to_write_body, parse_batch_response_parts,
+        parse_fault,
+    };
+    use crate::dataverse::entity::{Entity, EntityReference, Money, Value};
 
     #[test]
     fn parses_flat_batch_response_parts() {
@@ -395,5 +444,73 @@ mod tests {
         let fault = parse_fault(&parts[1]);
         assert_eq!(fault.code.as_deref(), Some("0x1"));
         assert_eq!(fault.message, "Bad data");
+    }
+
+    #[test]
+    fn serializes_entity_reference_as_odata_bind() {
+        let mut entity = Entity::new(Uuid::new_v4(), "contact", None);
+        entity.attributes.insert(
+            "parentcustomerid".to_string(),
+            Value::EntityReference(EntityReference {
+                id: Uuid::parse_str("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee").expect("uuid"),
+                logical_name: "account".to_string(),
+                name: None,
+            }),
+        );
+
+        let body = entity_to_write_body(
+            &entity,
+            &HashMap::from([("account".to_string(), "accounts".to_string())]),
+        )
+        .expect("should serialize");
+
+        assert!(body.contains("\"parentcustomerid@odata.bind\":\"accounts(aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee)\""));
+    }
+
+    #[test]
+    fn create_request_constructor_uses_default_parameters() {
+        let request = CreateRequest::new(Entity::new(Uuid::new_v4(), "account", None));
+
+        assert!(request.parameters.headers().is_empty());
+    }
+
+    #[test]
+    fn create_success_response_reads_entity_id_header() {
+        let request = OrganizationRequest::Create(CreateRequest::new(Entity::new(
+            Uuid::new_v4(),
+            "account",
+            None,
+        )));
+
+        let response = request.success_response(&HashMap::from([(
+            "odata-entityid".to_string(),
+            "https://example.crm.dynamics.com/api/data/v9.2/accounts(aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee)"
+                .to_string(),
+        )]));
+
+        match response {
+            super::OrganizationResponse::Create(created) => {
+                assert_eq!(
+                    created.id,
+                    Some(Uuid::parse_str("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee").expect("uuid"))
+                );
+            }
+            _ => panic!("expected create response"),
+        }
+    }
+
+    #[test]
+    fn serializes_decimal_like_values_without_quotes() {
+        let mut entity = Entity::new(Uuid::new_v4(), "invoice", None);
+        entity.attributes.insert(
+            "totalamount".to_string(),
+            Value::Money(Money {
+                value: Decimal::new(12345, 2),
+            }),
+        );
+
+        let body = entity_to_write_body(&entity, &HashMap::new()).expect("should serialize");
+
+        assert!(body.contains("\"totalamount\":123.45"));
     }
 }

@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::auth::connectionstring::parse_connection_string_auth_config;
+
 /// Public authentication configuration for acquiring Dataverse access tokens.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "method")]
@@ -45,6 +47,11 @@ pub enum AuthConfig {
 }
 
 impl AuthConfig {
+    /// Parse an `AuthConfig` from a Dataverse-style connection string.
+    pub fn from_connection_string(connection_string: &str) -> Result<Self, String> {
+        parse_connection_string_auth_config(connection_string)
+    }
+
     pub(crate) fn dataverse_url(&self) -> &str {
         match self {
             AuthConfig::ClientCredentials { dataverse_url, .. } => dataverse_url.trim_end_matches('/'),

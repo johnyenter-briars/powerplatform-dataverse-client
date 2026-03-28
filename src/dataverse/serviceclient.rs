@@ -40,6 +40,7 @@ use crate::dataverse::requestparameters::RequestParameters;
 
 const ROW_NUMBER_ATTRIBUTE: &str = "__rownum";
 const AGGREGATE_PAGE_SIZE: i32 = 5000;
+const DEFAULT_FETCHXML_PAGE_SIZE: i32 = 5000;
 
 /// OData list wrapper returned by Dataverse metadata endpoints.
 #[derive(Debug, serde::Deserialize)]
@@ -88,7 +89,11 @@ pub struct ServiceClient {
     base_url: std::string::String,
     token_cache_path: PathBuf,
     token: Mutex<CachedToken>,
+    // Entity definitions are cached as a single blob because most metadata-driven features need
+    // the full list, and Dataverse returns them efficiently in one request.
     entity_definitions_cache: Mutex<Option<Vec<EntityDefinition>>>,
+    // Attribute metadata is cached per logical entity name because callers usually fan out to only
+    // a small number of entities during a session.
     entity_attributes_cache: Mutex<HashMap<String, Vec<EntityAttribute>>>,
     log_level: LogLevel,
 }
@@ -114,6 +119,8 @@ impl ServiceClient {
     ) -> Result<Self, String> {
         let token_cache_path = resolve_token_cache_file_path(&auth)?;
 
+        // Initialization eagerly ensures a usable token so later requests can fail on Dataverse
+        // semantics instead of first-request authentication setup.
         let token = if let Some(cached) = load_cached_token(&token_cache_path)? {
             if !cached.access_token.trim().is_empty() && !is_expiring_soon(cached.expires_at) {
                 cached
@@ -169,21 +176,24 @@ impl ServiceClient {
         entity: &str,
         fetchxml: &str,
     ) -> Result<Vec<Entity>, std::string::String> {
-        self.retrieve_multiple_fetchxml_paging_with_progress(entity, fetchxml, |_, _| {})
+        self.retrieve_multiple_fetchxml_paging_with_progress(entity, fetchxml, |_, _| {}, None)
             .await
     }
 
     /// Retrieve multiple records by FetchXML, automatically paging until all results are returned.
+    /// Uses the provided page size when specified, otherwise defaults to 5000 records per page.
     /// Reports page-level progress as `(page_number, total_records_retrieved_so_far)`.
     pub async fn retrieve_multiple_fetchxml_paging_with_progress<F>(
         &self,
         entity: &str,
         fetchxml: &str,
         mut on_progress: F,
+        page_size: Option<i32>,
     ) -> Result<Vec<Entity>, std::string::String>
     where
         F: FnMut(usize, usize),
     {
+        let page_size = page_size.unwrap_or(DEFAULT_FETCHXML_PAGE_SIZE);
         let primary_id_attribute = self.resolve_primary_id_attribute(entity).await?;
         let attribute_map = self.entity_attribute_map(entity).await?;
         if fetch_tag_has_attr(fetchxml, "top")? {
@@ -204,8 +214,9 @@ impl ServiceClient {
         let mut entities: Vec<Entity> = vec![];
 
         loop {
+            let fetchxml = ensure_fetch_page_size(fetchxml, page_size)?;
             let fetch_with_paging = apply_paging(
-                &ensure_aggregate_page_size(fetchxml, AGGREGATE_PAGE_SIZE)?,
+                &ensure_aggregate_page_size(&fetchxml, AGGREGATE_PAGE_SIZE)?,
                 page,
                 paging_cookie.as_deref(),
             )?;
@@ -776,6 +787,8 @@ impl ServiceClient {
             return Ok(token.access_token.clone());
         }
 
+        // Refreshing while the mutex is held keeps parallel callers from racing into multiple token
+        // refreshes and then stomping each other's cache file updates.
         let refreshed = match &self.auth {
             AuthConfig::ClientCredentials { .. } => {
                 println!("Refreshing access token before request using client credentials...");
@@ -1008,6 +1021,8 @@ impl ServiceClient {
         let mut body = String::new();
 
         for (content_id, item) in requests.iter().enumerate() {
+            // Dataverse expects `$batch` parts in raw HTTP-message form rather than as plain JSON
+            // fragments, so the multipart body is assembled manually here.
             body.push_str(&format!("--{boundary}\r\n"));
             body.push_str("Content-Type: application/http\r\n");
             body.push_str("Content-Transfer-Encoding: binary\r\n");
@@ -1069,6 +1084,26 @@ impl ServiceClient {
     }
 }
 
+fn ensure_fetch_page_size(fetchxml: &str, page_size: i32) -> Result<String, String> {
+    if fetch_tag_has_attr(fetchxml, "count")? {
+        return Ok(fetchxml.to_string());
+    }
+
+    let fetch_start = fetchxml
+        .find("<fetch")
+        .ok_or_else(|| "FetchXML must start with a <fetch> element".to_string())?;
+    let tag_end = fetchxml[fetch_start..]
+        .find('>')
+        .ok_or_else(|| "FetchXML <fetch> element is not closed".to_string())?
+        + fetch_start;
+
+    let mut inserted = String::new();
+    inserted.push_str(&fetchxml[..tag_end]);
+    inserted.push_str(&format!(" count=\"{page_size}\""));
+    inserted.push_str(&fetchxml[tag_end..]);
+    Ok(inserted)
+}
+
 fn normalize_entity_name(value: &str) -> String {
     value
         .trim_matches(|ch| ch == '[' || ch == ']' || ch == '"' || ch == '`')
@@ -1079,4 +1114,49 @@ fn parse_uuid_from_uri(value: &str) -> Option<Uuid> {
     let start = value.rfind('(')? + 1;
     let end = value.rfind(')')?;
     Uuid::parse_str(value[start..end].trim_matches('{').trim_matches('}')).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ensure_fetch_page_size, normalize_entity_name, parse_uuid_from_uri};
+    use uuid::Uuid;
+
+    #[test]
+    fn ensure_fetch_page_size_adds_count_when_missing() {
+        let fetchxml = ensure_fetch_page_size("<fetch><entity name=\"account\" /></fetch>", 250)
+            .expect("should insert count");
+
+        assert!(fetchxml.contains("count=\"250\""));
+    }
+
+    #[test]
+    fn ensure_fetch_page_size_preserves_existing_count() {
+        let fetchxml =
+            ensure_fetch_page_size("<fetch count=\"100\"><entity name=\"account\" /></fetch>", 250)
+                .expect("should preserve count");
+
+        assert_eq!(
+            fetchxml,
+            "<fetch count=\"100\"><entity name=\"account\" /></fetch>"
+        );
+    }
+
+    #[test]
+    fn normalize_entity_name_strips_common_identifier_wrappers() {
+        assert_eq!(normalize_entity_name("[Account]"), "account");
+        assert_eq!(normalize_entity_name("\"Contact\""), "contact");
+        assert_eq!(normalize_entity_name("`Lead`"), "lead");
+    }
+
+    #[test]
+    fn parse_uuid_from_uri_reads_guid_between_parentheses() {
+        let parsed = parse_uuid_from_uri(
+            "https://example.crm.dynamics.com/api/data/v9.2/accounts({aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee})",
+        );
+
+        assert_eq!(
+            parsed,
+            Some(Uuid::parse_str("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee").expect("uuid"))
+        );
+    }
 }
