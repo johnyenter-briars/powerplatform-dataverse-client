@@ -29,6 +29,7 @@ The long-term goal is full feature parity with the [Microsoft.PowerPlatform.Data
 | Batch operations (`ExecuteMultiple`-style) | ✅ |
 | Dataverse request-parameter headers | ✅ |
 | Retrieve entity by ID | ❌ |
+| Username / Password auth | ❌ |
 | Retry/backoff | ❌ |
 | Full feature parity with the XRM SDK | ❌ |
 
