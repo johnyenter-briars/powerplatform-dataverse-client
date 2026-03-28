@@ -65,6 +65,29 @@ async fn main() -> Result<(), String> {
 }
 ```
 
+## Samples
+
+```powershell
+cd samples/<sample-name>
+cp secrets.example.json secrets.json
+cargo run
+```
+
+[hello-dataverse](samples/hello-dataverse/README.md) is the smallest sample.
+
+[v1-features](samples/v1-features/README.md) contains one scenario per feature:
+
+- [Device code auth scenario](samples/v1-features/src/scenarios/device_code_auth.rs)
+- [Device code progress scenario](samples/v1-features/src/scenarios/device_code_progress.rs)
+- [Client credentials auth scenario](samples/v1-features/src/scenarios/client_credentials_auth.rs)
+- [Metadata scenario](samples/v1-features/src/scenarios/metadata.rs)
+- [Data types scenario](samples/v1-features/src/scenarios/data_types.rs)
+- [FetchXML scenario](samples/v1-features/src/scenarios/fetchxml.rs)
+- [CRUD scenario](samples/v1-features/src/scenarios/crud.rs)
+- [Request parameters scenario](samples/v1-features/src/scenarios/request_parameters.rs)
+- [Batch scenario](samples/v1-features/src/scenarios/batch.rs)
+- [Refresh demo scenario](samples/v1-features/src/scenarios/refresh_demo.rs)
+
 ## Documentation Index
 
 ### Dataverse Service Client
@@ -115,29 +138,6 @@ See [doc/request-parameters.md](doc/request-parameters.md).
 Batch operations use `ExecuteMultipleRequest`, `ExecuteMultipleResponse`, and the typed create/update/delete request wrappers.
 
 See [doc/batch.md](doc/batch.md).
-
-## Samples
-
-```powershell
-cd samples/<sample-name>
-cp secrets.example.json secrets.json
-cargo run
-```
-
-[hello-dataverse](samples/hello-dataverse/README.md) is the smallest sample.
-
-[v1-features](samples/v1-features/README.md) contains one scenario per feature:
-
-- [Device code auth scenario](samples/v1-features/src/scenarios/device_code_auth.rs)
-- [Device code progress scenario](samples/v1-features/src/scenarios/device_code_progress.rs)
-- [Client credentials auth scenario](samples/v1-features/src/scenarios/client_credentials_auth.rs)
-- [Metadata scenario](samples/v1-features/src/scenarios/metadata.rs)
-- [Data types scenario](samples/v1-features/src/scenarios/data_types.rs)
-- [FetchXML scenario](samples/v1-features/src/scenarios/fetchxml.rs)
-- [CRUD scenario](samples/v1-features/src/scenarios/crud.rs)
-- [Request parameters scenario](samples/v1-features/src/scenarios/request_parameters.rs)
-- [Batch scenario](samples/v1-features/src/scenarios/batch.rs)
-- [Refresh demo scenario](samples/v1-features/src/scenarios/refresh_demo.rs)
 
 ## Contributing
 
