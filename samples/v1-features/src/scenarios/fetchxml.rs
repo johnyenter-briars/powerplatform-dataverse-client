@@ -1,12 +1,14 @@
 use std::future::Future;
 use std::pin::Pin;
 
+use powerplatform_dataverse_client::LogLevel;
 use powerplatform_dataverse_client::dataverse::serviceclient::ServiceClient;
 
 const DEBUG_OUTPUT: bool = true;
 
-pub fn run(client: &ServiceClient) -> Pin<Box<dyn Future<Output = Result<(), String>> + '_>> {
+pub fn run(connection_string: &str) -> Pin<Box<dyn Future<Output = Result<(), String>> + '_>> {
     Box::pin(async move {
+        let client = ServiceClient::new(connection_string, LogLevel::Information).await?;
         let accounts_fetchxml = r#"
         <fetch top="5">
             <entity name="account">
@@ -29,8 +31,8 @@ pub fn run(client: &ServiceClient) -> Pin<Box<dyn Future<Output = Result<(), Str
         </fetch>
     "#;
 
-        run_fetchxml(client, "accounts", accounts_fetchxml).await?;
-        run_fetchxml(client, "contacts", contacts_fetchxml).await?;
+        run_fetchxml(&client, "accounts", accounts_fetchxml).await?;
+        run_fetchxml(&client, "contacts", contacts_fetchxml).await?;
 
         Ok(())
     })

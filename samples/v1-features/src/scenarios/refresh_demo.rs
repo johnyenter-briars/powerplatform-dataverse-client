@@ -1,10 +1,12 @@
 use std::future::Future;
 use std::pin::Pin;
 
+use powerplatform_dataverse_client::LogLevel;
 use powerplatform_dataverse_client::dataverse::serviceclient::ServiceClient;
 
-pub fn run(client: &ServiceClient) -> Pin<Box<dyn Future<Output = Result<(), String>> + '_>> {
+pub fn run(connection_string: &str) -> Pin<Box<dyn Future<Output = Result<(), String>> + '_>> {
     Box::pin(async move {
+        let client = ServiceClient::new(connection_string, LogLevel::Information).await?;
         println!(
             "Press Enter to make a request and print the token expiry. Type 'q' and press Enter to quit."
         );
