@@ -71,8 +71,9 @@ pub(crate) fn parse_entities_from_response(
             .as_object()
             .ok_or_else(|| "Invalid response from Dataverse".to_string())?;
 
-        // NOTE: Convention-based primary id without a metadata call.
-        // If missing, we fail fast so the caller can correct it.
+        // Fast-path parsing assumes the usual `<logicalname>id` convention unless metadata already
+        // told us the real primary id attribute. Failing here is preferable to silently producing
+        // malformed entities with missing ids.
         let id_value = record
             .get(&primary_id_key)
             .and_then(|value| value.as_str())
@@ -407,6 +408,8 @@ fn apply_formatted_value_names(
     attributes: &mut HashMap<Attribute, RowValue>,
     record: &serde_json::Map<std::string::String, Value>,
 ) {
+    // Dataverse emits display labels as annotation siblings instead of embedding them in the typed
+    // value payload, so option set names have to be stitched back onto the parsed attribute map.
     if !record.keys().any(|key| key.ends_with(FORMATTED_VALUE_SUFFIX)) {
         return;
     }
@@ -434,6 +437,9 @@ fn apply_lookup_attribute_annotations(
     attributes: &mut HashMap<Attribute, RowValue>,
     record: &serde_json::Map<std::string::String, Value>,
 ) {
+    // Non-underscore lookup columns can arrive as plain string ids plus annotation siblings.
+    // When that happens, upgrade the parsed string into a full `EntityReference` so downstream
+    // callers see the same shape they would get from the `_lookup_value` form.
     for (key, value) in record {
         let Some(base_key) = key.strip_suffix("@Microsoft.Dynamics.CRM.lookuplogicalname") else {
             continue;
@@ -474,6 +480,8 @@ fn apply_lookup_attribute_annotations(
 }
 
 fn infer_logical_name(entity_set: &str) -> std::string::String {
+    // Metadata calls are avoided in the hot path for plain list parsing, so we keep a conservative
+    // singularization fallback here for the common entity-set naming patterns Dataverse uses.
     let normalized = entity_set.trim().to_ascii_lowercase();
 
     if normalized.ends_with("ies") && normalized.len() > 3 {

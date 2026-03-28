@@ -11,9 +11,9 @@ pub struct RequestParameters {
     pub bypass_custom_plugin_execution: bool,
     /// Send `MSCRM.SuppressCallbackRegistrationExpanderJob=true`.
     pub suppress_callback_registration_expander_job: bool,
-    // Not implemented yet:
-    // `MSCRM.BypassBusinessLogicExecutionStepIds` support for specific step IDs.
-    // TODO:
+    // Step-specific bypass ids are intentionally omitted for now because they need a more stable
+    // public shape than a raw string list. The current API only exposes the simple boolean-style
+    // switches that map cleanly to well-known headers.
     // pub bypass_business_logic_execution_step_ids: Option<Vec<String>>,
 }
 
@@ -43,7 +43,8 @@ impl RequestParameters {
             request = request.header(header, value);
         }
 
-        // TODO: support specific step id bypassing
+        // Step-id bypass headers are not emitted yet for the same reason documented on the struct:
+        // the crate does not currently expose a stable typed API for managing those ids.
         // if let Some(step_ids) = &self.bypass_business_logic_execution_step_ids {
         //     request = request.header(
         //         "MSCRM.BypassBusinessLogicExecutionStepIds",

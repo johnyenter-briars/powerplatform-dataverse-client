@@ -13,76 +13,113 @@ const HEADER_SEPARATOR: &str = "\r\n\r\n";
 
 #[derive(Debug, Clone, Default)]
 pub struct ExecuteMultipleSettings {
+    /// Continue processing later requests when an earlier request fails.
     pub continue_on_error: bool,
+    /// Include per-request success payloads in the batch response when Dataverse provides them.
     pub return_responses: bool,
 }
 
+/// Batch request payload for Dataverse `ExecuteMultiple`-style operations.
 #[derive(Debug, Clone, Default)]
 pub struct ExecuteMultipleRequest {
+    /// Batch execution behavior flags.
     pub settings: ExecuteMultipleSettings,
+    /// Individual create, update, or delete operations to include in the batch.
     pub requests: Vec<OrganizationRequest>,
 }
 
+/// Batch response returned from Dataverse after executing multiple operations.
 #[derive(Debug, Clone, Default)]
 pub struct ExecuteMultipleResponse {
+    /// Per-request outcomes in the same order as the submitted requests.
     pub responses: Vec<ExecuteMultipleResponseItem>,
 }
 
+/// Result for a single request within an `ExecuteMultipleResponse`.
 #[derive(Debug, Clone)]
 pub struct ExecuteMultipleResponseItem {
+    /// Zero-based index of the original request in the submitted batch.
     pub request_index: usize,
+    /// Successful response payload, when `return_responses` was enabled and the request succeeded.
     pub response: Option<OrganizationResponse>,
+    /// Fault details for failed requests.
     pub fault: Option<OrganizationServiceFault>,
 }
 
+/// Error payload for a failed Dataverse batch item.
 #[derive(Debug, Clone)]
 pub struct OrganizationServiceFault {
+    /// HTTP status code returned for the failed item.
     pub status_code: u16,
+    /// Dataverse fault code when present in the response body.
     pub code: Option<String>,
+    /// Human-readable fault message.
     pub message: String,
+    /// Raw HTTP body for callers that need the original Dataverse payload.
     pub raw_body: Option<String>,
 }
 
+/// Supported Dataverse operations for a batch request.
 #[derive(Debug, Clone)]
 pub enum OrganizationRequest {
+    /// Create a new Dataverse row.
     Create(CreateRequest),
+    /// Update an existing Dataverse row.
     Update(UpdateRequest),
+    /// Delete an existing Dataverse row.
     Delete(DeleteRequest),
 }
 
+/// Successful payload for a single `OrganizationRequest`.
 #[derive(Debug, Clone)]
 pub enum OrganizationResponse {
+    /// Create response containing the created row id when Dataverse returns it.
     Create(CreateResponse),
+    /// Update response placeholder for successful updates.
     Update(UpdateResponse),
+    /// Delete response placeholder for successful deletes.
     Delete(DeleteResponse),
 }
 
+/// Create operation inside a batch request.
 #[derive(Debug, Clone)]
 pub struct CreateRequest {
+    /// Entity payload to create.
     pub target: Entity,
+    /// Optional Dataverse headers that affect plugin/business logic execution.
     pub parameters: RequestParameters,
 }
 
+/// Success payload for a batch create request.
 #[derive(Debug, Clone)]
 pub struct CreateResponse {
+    /// Created row id extracted from Dataverse response headers when available.
     pub id: Option<Uuid>,
 }
 
+/// Update operation inside a batch request.
 #[derive(Debug, Clone)]
 pub struct UpdateRequest {
+    /// Entity payload to update. The entity id must already be populated.
     pub target: Entity,
+    /// Optional Dataverse headers that affect plugin/business logic execution.
     pub parameters: RequestParameters,
 }
 
+/// Success payload for a batch update request.
 #[derive(Debug, Clone, Default)]
 pub struct UpdateResponse;
 
+/// Delete operation inside a batch request.
 #[derive(Debug, Clone)]
 pub struct DeleteRequest {
+    /// Entity reference to delete.
     pub target: EntityReference,
+    /// Optional Dataverse headers that affect plugin/business logic execution.
     pub parameters: RequestParameters,
 }
 
+/// Success payload for a batch delete request.
 #[derive(Debug, Clone, Default)]
 pub struct DeleteResponse;
 
@@ -107,6 +144,7 @@ pub(crate) struct ParsedBatchPart {
 }
 
 impl CreateRequest {
+    /// Create a batch create request with default request parameters.
     pub fn new(target: Entity) -> Self {
         Self {
             target,
@@ -116,6 +154,7 @@ impl CreateRequest {
 }
 
 impl UpdateRequest {
+    /// Create a batch update request with default request parameters.
     pub fn new(target: Entity) -> Self {
         Self {
             target,
@@ -125,6 +164,7 @@ impl UpdateRequest {
 }
 
 impl DeleteRequest {
+    /// Create a batch delete request with default request parameters.
     pub fn new(target: EntityReference) -> Self {
         Self {
             target,
