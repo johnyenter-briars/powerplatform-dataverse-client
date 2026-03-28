@@ -2,11 +2,11 @@
 
 Unofficial Rust SDK for the Microsoft Dataverse (Power Platform) Web API.
 
-This crate is used as the Dataverse backend for [Queryverse](https://github.com/johnyenter-briars/queryverse). The immediate goal is a practical, low-friction Rust client for real Dataverse work. The longer-term goal is to cover the most useful parts of the `Microsoft.PowerPlatform.Dataverse.Client` experience with a Rust-shaped API.
+This crate is used as the Dataverse backend for [Queryverse](https://github.com/johnyenter-briars/queryverse). The root README is intentionally an index. Detailed API and feature notes live in the [`doc/`](doc) folder.
 
 ## Microsoft Learn
 
-The crate centers on the Dataverse Web API and these Microsoft Learn references:
+Core Dataverse Web API references:
 
 - [Use the Microsoft Dataverse Web API](https://learn.microsoft.com/power-apps/developer/data-platform/webapi/overview)
 - [Authenticate with Dataverse Web API](https://learn.microsoft.com/power-apps/developer/data-platform/authenticate-oauth)
@@ -38,8 +38,8 @@ The crate centers on the Dataverse Web API and these Microsoft Learn references:
 | Batch operations (`ExecuteMultiple`-style) | ✅ |
 | Dataverse request-parameter headers | ✅ |
 | Retrieve entity by ID | ❌ |
-| OData query syntax (non-FetchXML) | ❌ |
 | Retry/backoff | ❌ |
+| Full feature parity with the XRM SDK | ❌ |
 
 ## Quick Start
 
@@ -73,192 +73,56 @@ async fn main() -> Result<(), String> {
 }
 ```
 
-Additional feature notes live in:
-
-- [Client credentials auth](doc/client-credentials-auth.md)
-- [Device code auth](doc/device-code-auth.md)
-- [FetchXML](doc/fetchxml.md)
-- [Metadata](doc/metadata.md)
-- [Token refresh](doc/token-refresh.md)
-- [Token cache](doc/token-cache.md)
-
-## Public API
-
-This section lists every public struct, enum, type alias, and method exported by the crate.
-
-### Logging
-
-Related Learn area:
-- Dataverse requests themselves do not define logging behavior; `LogLevel` is crate-local request logging.
-
-Public types:
-- `LogLevel`: SDK log verbosity enum.
-
-Public methods:
-- `LogLevel::as_filter(self) -> log::LevelFilter`
-- `LogLevel::includes_debug(self) -> bool`
-
-### Authentication
-
-Related Learn area:
-- [Authenticate with Dataverse Web API](https://learn.microsoft.com/power-apps/developer/data-platform/authenticate-oauth)
-
-Public types:
-- `AuthConfig`: auth configuration enum with `ClientCredentials` and `DeviceCode` variants.
-- `DeviceCodeFlowEvent`: progress events emitted during device-code sign-in.
-- `TokenExchange`: access token, refresh token, and expiry returned from refresh/device-code exchange paths.
-- `ClientCredentialsToken`: access token and expiry returned from client-credentials auth.
-
-Public methods:
-- `AuthConfig::from_connection_string(connection_string: &str) -> Result<AuthConfig, String>`
-- `ensure_device_code_token_with_progress(auth: &AuthConfig, progress: F) -> Result<(), String>`
+## Documentation Index
 
 ### Dataverse Service Client
 
-Related Learn areas:
-- [Use the Microsoft Dataverse Web API](https://learn.microsoft.com/power-apps/developer/data-platform/webapi/overview)
-- [Use FetchXML to retrieve data](https://learn.microsoft.com/power-apps/developer/data-platform/fetchxml/overview)
-- [Query table definitions using the Web API](https://learn.microsoft.com/power-apps/developer/data-platform/webapi/query-metadata-web-api)
-- [Create and update table rows using the Web API](https://learn.microsoft.com/power-apps/developer/data-platform/webapi/create-entity-web-api)
-- [Delete table rows using the Web API](https://learn.microsoft.com/power-apps/developer/data-platform/webapi/delete-entity-using-web-api)
-- [Execute batch operations using the Web API](https://learn.microsoft.com/power-apps/developer/data-platform/webapi/execute-batch-operations-using-web-api)
+`ServiceClient` is the main Dataverse Web API entry point for FetchXML, metadata, CRUD, and batch operations.
 
-Public types:
-- `ServiceClient`: main Dataverse client.
-
-Public methods:
-- `ServiceClient::new(connection_string: &str, log_level: LogLevel) -> Result<ServiceClient, String>`
-- `ServiceClient::new_with_auth(auth: AuthConfig, log_level: LogLevel) -> Result<ServiceClient, String>`
-- `ServiceClient::token_expires_at(&self) -> Option<DateTime<Utc>>`
-- `ServiceClient::retrieve_multiple_fetchxml(&self, entity: &str, fetchxml: &str) -> Result<Vec<Entity>, String>`
-- `ServiceClient::retrieve_multiple_fetchxml_paging(&self, entity: &str, fetchxml: &str) -> Result<Vec<Entity>, String>`
-- `ServiceClient::retrieve_multiple_fetchxml_paging_with_progress(&self, entity: &str, fetchxml: &str, on_progress: F, page_size: Option<i32>) -> Result<Vec<Entity>, String>`
-- `ServiceClient::retrieve_multiple_fetchxml_count(&self, entity: &str, fetchxml: &str) -> Result<usize, String>`
-- `ServiceClient::list_entity_definitions(&self) -> Result<Vec<EntityDefinition>, String>`
-- `ServiceClient::list_entity_attributes(&self, logical_name: &str) -> Result<Vec<EntityAttribute>, String>`
-- `ServiceClient::list_entity_relationships(&self, logical_name: &str) -> Result<Vec<EntityRelationship>, String>`
-- `ServiceClient::update_entity(&self, entity_set: &str, id: &str, attributes: &HashMap<String, serde_json::Value>) -> Result<(), String>`
-- `ServiceClient::create_entity(&self, entity_set: &str, attributes: &HashMap<String, serde_json::Value>) -> Result<Option<Uuid>, String>`
-- `ServiceClient::create_entity_with_options(&self, entity_set: &str, attributes: &HashMap<String, serde_json::Value>, options: &RequestParameters) -> Result<Option<Uuid>, String>`
-- `ServiceClient::update_entity_with_options(&self, entity_set: &str, id: &str, attributes: &HashMap<String, serde_json::Value>, options: &RequestParameters) -> Result<(), String>`
-- `ServiceClient::delete_entity(&self, entity_set: &str, id: &str) -> Result<(), String>`
-- `ServiceClient::delete_entity_with_options(&self, entity_set: &str, id: &str, options: &RequestParameters) -> Result<(), String>`
-- `ServiceClient::execute_multiple(&self, request: &ExecuteMultipleRequest) -> Result<ExecuteMultipleResponse, String>`
-
-### Request Parameters
-
-Related Learn area:
-- [Bypass custom business logic](https://learn.microsoft.com/power-apps/developer/data-platform/bypass-custom-business-logic)
-
-Public types:
-- `RequestParameters`: optional Dataverse request-header flags for create, update, and delete operations.
-
-Public methods:
-- `RequestParameters::headers(&self) -> Vec<(&'static str, &'static str)>`
-- `RequestParameters::apply(&self, request: reqwest::RequestBuilder) -> reqwest::RequestBuilder`
-
-Currently supported request headers:
-
-| Field | Dataverse Header | Supported |
-| --- | --- | --- |
-| `bypass_business_logic_execution_custom_sync` | `MSCRM.BypassBusinessLogicExecution=CustomSync` | ✅ |
-| `bypass_business_logic_execution_custom_async` | `MSCRM.BypassBusinessLogicExecution=CustomAsync` | ✅ |
-| `bypass_custom_plugin_execution` | `MSCRM.BypassCustomPluginExecution=true` | ✅ |
-| `suppress_callback_registration_expander_job` | `MSCRM.SuppressCallbackRegistrationExpanderJob=true` | ✅ |
-
-### Batch Request and Response Types
-
-Related Learn area:
-- [Execute batch operations using the Web API](https://learn.microsoft.com/power-apps/developer/data-platform/webapi/execute-batch-operations-using-web-api)
-
-Public types:
-- `ExecuteMultipleSettings`
-- `ExecuteMultipleRequest`
-- `ExecuteMultipleResponse`
-- `ExecuteMultipleResponseItem`
-- `OrganizationServiceFault`
-- `OrganizationRequest`
-- `OrganizationResponse`
-- `CreateRequest`
-- `CreateResponse`
-- `UpdateRequest`
-- `UpdateResponse`
-- `DeleteRequest`
-- `DeleteResponse`
-
-Public methods:
-- `CreateRequest::new(target: Entity) -> CreateRequest`
-- `UpdateRequest::new(target: Entity) -> UpdateRequest`
-- `DeleteRequest::new(target: EntityReference) -> DeleteRequest`
-
-Example:
-
-```rust
-use powerplatform_dataverse_client::dataverse::batch::{
-    ExecuteMultipleRequest, ExecuteMultipleSettings, OrganizationRequest, UpdateRequest,
-};
-use powerplatform_dataverse_client::dataverse::entity::{Entity, Value};
-
-let mut account = Entity::new(account_id, "account", None);
-account
-    .attributes
-    .insert("tickersymbol".to_string(), Value::String("MSFT".to_string()));
-
-let response = client
-    .execute_multiple(&ExecuteMultipleRequest {
-        settings: ExecuteMultipleSettings {
-            continue_on_error: false,
-            return_responses: false,
-        },
-        requests: vec![OrganizationRequest::Update(UpdateRequest::new(account))],
-    })
-    .await?;
-```
+See [doc/service-client.md](doc/service-client.md).
 
 ### Entity and Value Types
 
-Related Learn area:
-- [Use the Microsoft Dataverse Web API](https://learn.microsoft.com/power-apps/developer/data-platform/webapi/overview)
+The crate exposes typed Dataverse row/value shapes such as `Entity`, `EntityReference`, `Money`, and `Value`.
 
-Public types:
-- `Value`
-- `Money`
-- `OptionSetValue`
-- `OptionSetValueCollection`
-- `EntityReference`
-- `Attribute`
-- `Entity`
-
-Public methods:
-- `Entity::new(id: Uuid, logical_name: impl Into<String>, name: Option<String>) -> Entity`
-
-Supported value shapes:
-
-| Dataverse Shape | Rust Shape |
-| --- | --- |
-| Whole numbers | `Value::Int(i64)` |
-| Floating-point numbers | `Value::Float(f64)` |
-| Exact decimals | `Value::Decimal(Decimal)` |
-| Strings | `Value::String(String)` |
-| Booleans | `Value::Boolean(bool)` |
-| Date/time values | `Value::DateTime(DateTime<Utc>)` |
-| GUID attributes | `Value::Guid(Uuid)` |
-| Money values | `Value::Money(Money)` |
-| Single-choice values | `Value::OptionSetValue(OptionSetValue)` |
-| Multi-select values | `Value::OptionSetValueCollection(OptionSetValueCollection)` |
-| Nulls | `Value::Null` |
-| Lookups | `Value::EntityReference(EntityReference)` |
+See [doc/entity-types.md](doc/entity-types.md).
 
 ### Metadata Types
 
-Related Learn area:
-- [Query table definitions using the Web API](https://learn.microsoft.com/power-apps/developer/data-platform/webapi/query-metadata-web-api)
+The crate exposes `EntityDefinition`, `EntityAttribute`, `AttributeTypeName`, and `EntityRelationship` for schema-driven workflows.
 
-Public types:
-- `AttributeTypeName`
-- `EntityAttribute`
-- `EntityDefinition`
-- `EntityRelationship`
+See [doc/metadata-types.md](doc/metadata-types.md) and [doc/metadata.md](doc/metadata.md).
+
+
+### Logging
+
+`LogLevel` controls the crate's own request/debug verbosity.
+
+See [doc/logging.md](doc/logging.md).
+
+### Authentication
+
+Authentication centers on `AuthConfig`, device-code progress events, token refresh, and token cache handling.
+
+See:
+
+- [doc/authentication.md](doc/authentication.md)
+- [doc/client-credentials-auth.md](doc/client-credentials-auth.md)
+- [doc/device-code-auth.md](doc/device-code-auth.md)
+- [doc/token-refresh.md](doc/token-refresh.md)
+- [doc/token-cache.md](doc/token-cache.md)
+
+### Request Parameters
+
+`RequestParameters` maps supported Dataverse optional request headers onto create, update, and delete operations.
+
+See [doc/request-parameters.md](doc/request-parameters.md).
+
+### Batch Operations
+
+Batch operations use `ExecuteMultipleRequest`, `ExecuteMultipleResponse`, and the typed create/update/delete request wrappers.
+
+See [doc/batch.md](doc/batch.md).
 
 ## Samples
 
