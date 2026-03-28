@@ -1,21 +1,12 @@
 # powerplatform-dataverse-client
 
-Unofficial Rust SDK for the Microsoft Dataverse (Power Platform) Web API.
+Unofficial Rust SDK for the Microsoft [Dataverse (Power Platform)](https://learn.microsoft.com/en-us/power-apps/maker/data-platform/data-platform-intro) Web API.
 
-This crate is used as the Dataverse backend for [Queryverse](https://github.com/johnyenter-briars/queryverse). The root README is intentionally an index. Detailed API and feature notes live in the [`doc/`](doc) folder.
+The short-term goal is to provide Rust developers a simple yet robust SDK to building integrations with Dataverse.
 
-## Microsoft Learn
+The long-term goal is full feature parity with the [Microsoft.PowerPlatform.Dataverse.Client](https://learn.microsoft.com/en-us/dotnet/api/microsoft.powerplatform.dataverse.client?view=dataverse-sdk-latest). 
 
-Core Dataverse Web API references:
-
-- [Use the Microsoft Dataverse Web API](https://learn.microsoft.com/power-apps/developer/data-platform/webapi/overview)
-- [Authenticate with Dataverse Web API](https://learn.microsoft.com/power-apps/developer/data-platform/authenticate-oauth)
-- [Use FetchXML to retrieve data](https://learn.microsoft.com/power-apps/developer/data-platform/fetchxml/overview)
-- [Query table definitions using the Web API](https://learn.microsoft.com/power-apps/developer/data-platform/webapi/query-metadata-web-api)
-- [Create and update table rows using the Web API](https://learn.microsoft.com/power-apps/developer/data-platform/webapi/create-entity-web-api)
-- [Delete table rows using the Web API](https://learn.microsoft.com/power-apps/developer/data-platform/webapi/delete-entity-using-web-api)
-- [Execute batch operations using the Web API](https://learn.microsoft.com/power-apps/developer/data-platform/webapi/execute-batch-operations-using-web-api)
-- [Bypass custom business logic](https://learn.microsoft.com/power-apps/developer/data-platform/bypass-custom-business-logic)
+`powerplatform-dataverse-client` is currently used as the Dataverse backend for [Queryverse](https://github.com/johnyenter-briars/queryverse).
 
 ## Features
 
