@@ -107,3 +107,30 @@ impl Default for Entity {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Entity;
+    use uuid::Uuid;
+
+    #[test]
+    fn new_entity_starts_with_empty_attribute_map() {
+        let id = Uuid::new_v4();
+        let entity = Entity::new(id, "account", Some("Acme".to_string()));
+
+        assert_eq!(entity.id, id);
+        assert_eq!(entity.logical_name, "account");
+        assert_eq!(entity.name.as_deref(), Some("Acme"));
+        assert!(entity.attributes.is_empty());
+    }
+
+    #[test]
+    fn default_entity_uses_nil_identity() {
+        let entity = Entity::default();
+
+        assert_eq!(entity.id, Uuid::nil());
+        assert!(entity.logical_name.is_empty());
+        assert!(entity.name.is_none());
+        assert!(entity.attributes.is_empty());
+    }
+}

@@ -220,3 +220,82 @@ fn normalize_token_cache_path(value: &str) -> Result<PathBuf, String> {
 fn looks_like_file_path(path: &Path) -> bool {
     path.extension().is_some()
 }
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::path::PathBuf;
+
+    use super::{
+        CachedToken, is_expiring_soon, load_cached_token, normalize_token_cache_path,
+        parse_jwt_expiry, save_cached_token,
+    };
+
+    fn unique_temp_path(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "powerplatform_dataverse_client_{name}_{}",
+            uuid::Uuid::new_v4()
+        ))
+    }
+
+    #[test]
+    fn reports_missing_or_nearby_expiry_as_expiring() {
+        assert!(is_expiring_soon(None));
+        assert!(is_expiring_soon(Some(1)));
+        assert!(!is_expiring_soon(Some(u64::MAX)));
+    }
+
+    #[test]
+    fn parses_jwt_expiry_from_payload() {
+        let token = "header.eyJleHAiOjE3MDAwMDAwMDB9.signature";
+
+        let expiry = parse_jwt_expiry(token);
+
+        assert_eq!(expiry, Some(1_700_000_000));
+    }
+
+    #[test]
+    fn normalizes_directory_cache_path_to_token_file() {
+        let dir = unique_temp_path("cache_dir");
+        let path = normalize_token_cache_path(dir.to_str().expect("utf8 path"))
+            .expect("should normalize directory path");
+
+        assert_eq!(path, dir.join("token_cache.txt"));
+        assert!(dir.exists());
+
+        fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn preserves_explicit_file_cache_path() {
+        let file = unique_temp_path("cache_file").join("token.json");
+        let path = normalize_token_cache_path(file.to_str().expect("utf8 path"))
+            .expect("should normalize file path");
+
+        assert_eq!(path, file);
+        assert!(path.parent().expect("parent").exists());
+
+        fs::remove_dir_all(path.parent().expect("parent")).ok();
+    }
+
+    #[test]
+    fn saves_and_loads_cached_tokens() {
+        let path = unique_temp_path("token_store").join("token.json");
+        let token = CachedToken {
+            access_token: "header.eyJleHAiOjE3MDAwMDAwMDB9.signature".to_string(),
+            refresh_token: Some("refresh-token".to_string()),
+            expires_at: Some(1_700_000_000),
+        };
+
+        save_cached_token(&path, &token).expect("should save cache");
+        let loaded = load_cached_token(&path)
+            .expect("should load cache")
+            .expect("cache should exist");
+
+        assert_eq!(loaded.access_token, token.access_token);
+        assert_eq!(loaded.refresh_token, token.refresh_token);
+        assert_eq!(loaded.expires_at, Some(1_700_000_000));
+
+        fs::remove_dir_all(path.parent().expect("parent")).ok();
+    }
+}

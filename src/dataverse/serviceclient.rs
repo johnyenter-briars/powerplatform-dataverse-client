@@ -1115,3 +1115,48 @@ fn parse_uuid_from_uri(value: &str) -> Option<Uuid> {
     let end = value.rfind(')')?;
     Uuid::parse_str(value[start..end].trim_matches('{').trim_matches('}')).ok()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{ensure_fetch_page_size, normalize_entity_name, parse_uuid_from_uri};
+    use uuid::Uuid;
+
+    #[test]
+    fn ensure_fetch_page_size_adds_count_when_missing() {
+        let fetchxml = ensure_fetch_page_size("<fetch><entity name=\"account\" /></fetch>", 250)
+            .expect("should insert count");
+
+        assert!(fetchxml.contains("count=\"250\""));
+    }
+
+    #[test]
+    fn ensure_fetch_page_size_preserves_existing_count() {
+        let fetchxml =
+            ensure_fetch_page_size("<fetch count=\"100\"><entity name=\"account\" /></fetch>", 250)
+                .expect("should preserve count");
+
+        assert_eq!(
+            fetchxml,
+            "<fetch count=\"100\"><entity name=\"account\" /></fetch>"
+        );
+    }
+
+    #[test]
+    fn normalize_entity_name_strips_common_identifier_wrappers() {
+        assert_eq!(normalize_entity_name("[Account]"), "account");
+        assert_eq!(normalize_entity_name("\"Contact\""), "contact");
+        assert_eq!(normalize_entity_name("`Lead`"), "lead");
+    }
+
+    #[test]
+    fn parse_uuid_from_uri_reads_guid_between_parentheses() {
+        let parsed = parse_uuid_from_uri(
+            "https://example.crm.dynamics.com/api/data/v9.2/accounts({aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee})",
+        );
+
+        assert_eq!(
+            parsed,
+            Some(Uuid::parse_str("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee").expect("uuid"))
+        );
+    }
+}

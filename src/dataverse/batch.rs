@@ -399,7 +399,16 @@ fn parse_fault_json(body: &str) -> Option<(Option<String>, String)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_batch_response_parts, parse_fault};
+    use std::collections::HashMap;
+
+    use rust_decimal::Decimal;
+    use uuid::Uuid;
+
+    use super::{
+        CreateRequest, OrganizationRequest, entity_to_write_body, parse_batch_response_parts,
+        parse_fault,
+    };
+    use crate::dataverse::entity::{Entity, EntityReference, Money, Value};
 
     #[test]
     fn parses_flat_batch_response_parts() {
@@ -435,5 +444,73 @@ mod tests {
         let fault = parse_fault(&parts[1]);
         assert_eq!(fault.code.as_deref(), Some("0x1"));
         assert_eq!(fault.message, "Bad data");
+    }
+
+    #[test]
+    fn serializes_entity_reference_as_odata_bind() {
+        let mut entity = Entity::new(Uuid::new_v4(), "contact", None);
+        entity.attributes.insert(
+            "parentcustomerid".to_string(),
+            Value::EntityReference(EntityReference {
+                id: Uuid::parse_str("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee").expect("uuid"),
+                logical_name: "account".to_string(),
+                name: None,
+            }),
+        );
+
+        let body = entity_to_write_body(
+            &entity,
+            &HashMap::from([("account".to_string(), "accounts".to_string())]),
+        )
+        .expect("should serialize");
+
+        assert!(body.contains("\"parentcustomerid@odata.bind\":\"accounts(aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee)\""));
+    }
+
+    #[test]
+    fn create_request_constructor_uses_default_parameters() {
+        let request = CreateRequest::new(Entity::new(Uuid::new_v4(), "account", None));
+
+        assert!(request.parameters.headers().is_empty());
+    }
+
+    #[test]
+    fn create_success_response_reads_entity_id_header() {
+        let request = OrganizationRequest::Create(CreateRequest::new(Entity::new(
+            Uuid::new_v4(),
+            "account",
+            None,
+        )));
+
+        let response = request.success_response(&HashMap::from([(
+            "odata-entityid".to_string(),
+            "https://example.crm.dynamics.com/api/data/v9.2/accounts(aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee)"
+                .to_string(),
+        )]));
+
+        match response {
+            super::OrganizationResponse::Create(created) => {
+                assert_eq!(
+                    created.id,
+                    Some(Uuid::parse_str("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee").expect("uuid"))
+                );
+            }
+            _ => panic!("expected create response"),
+        }
+    }
+
+    #[test]
+    fn serializes_decimal_like_values_without_quotes() {
+        let mut entity = Entity::new(Uuid::new_v4(), "invoice", None);
+        entity.attributes.insert(
+            "totalamount".to_string(),
+            Value::Money(Money {
+                value: Decimal::new(12345, 2),
+            }),
+        );
+
+        let body = entity_to_write_body(&entity, &HashMap::new()).expect("should serialize");
+
+        assert!(body.contains("\"totalamount\":123.45"));
     }
 }

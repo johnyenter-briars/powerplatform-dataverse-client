@@ -68,3 +68,39 @@ impl RequestParameters {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::RequestParameters;
+
+    #[test]
+    fn headers_include_requested_bypass_flags() {
+        let parameters = RequestParameters {
+            bypass_business_logic_execution_custom_sync: true,
+            bypass_business_logic_execution_custom_async: true,
+            bypass_custom_plugin_execution: true,
+            suppress_callback_registration_expander_job: true,
+        };
+
+        let headers = parameters.headers();
+
+        assert!(headers.contains(&(
+            "MSCRM.BypassBusinessLogicExecution",
+            "CustomSync,CustomAsync"
+        )));
+        assert!(headers.contains(&("MSCRM.BypassCustomPluginExecution", "true")));
+        assert!(headers.contains(&(
+            "MSCRM.SuppressCallbackRegistrationExpanderJob",
+            "true"
+        )));
+    }
+
+    #[test]
+    fn headers_omit_business_logic_value_when_no_flags_are_set() {
+        let headers = RequestParameters::default().headers();
+
+        assert!(!headers
+            .iter()
+            .any(|(name, _)| *name == "MSCRM.BypassBusinessLogicExecution"));
+    }
+}

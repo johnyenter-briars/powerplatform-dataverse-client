@@ -507,3 +507,112 @@ fn infer_logical_name(entity_set: &str) -> std::string::String {
 fn ends_with_any(name: &str, suffixes: &[&str]) -> bool {
     suffixes.iter().any(|suffix| name.ends_with(suffix))
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use serde_json::json;
+
+    use super::{
+        extract_paging_cookie, infer_logical_name, parse_entities_from_response,
+        parse_more_records, parse_record_count_from_response,
+    };
+    use crate::dataverse::entityattribute::{AttributeTypeName, EntityAttribute};
+
+    #[test]
+    fn parses_more_records_from_bool_and_string_annotations() {
+        assert!(parse_more_records(&json!({
+            "@Microsoft.Dynamics.CRM.morerecords": true
+        })));
+        assert!(parse_more_records(&json!({
+            "@Microsoft.Dynamics.CRM.morerecords": "true"
+        })));
+        assert!(!parse_more_records(&json!({})));
+    }
+
+    #[test]
+    fn extracts_double_encoded_paging_cookie() {
+        let json = json!({
+            "@Microsoft.Dynamics.CRM.fetchxmlpagingcookie":
+                "pagingcookie=\"%253ccookie%2520page%253d%25221%2522%2520%252f%253e\""
+        });
+
+        let cookie = extract_paging_cookie(&json).expect("should extract cookie");
+
+        assert_eq!(cookie, "<cookie page=\"1\" />");
+    }
+
+    #[test]
+    fn parses_entities_and_upgrades_lookup_annotations() {
+        let json = json!({
+            "value": [
+                {
+                    "contactid": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                    "fullname": "Ada Lovelace",
+                    "statecode": 0,
+                    "statecode@OData.Community.Display.V1.FormattedValue": "Active",
+                    "primarycontactid": "11111111-2222-3333-4444-555555555555",
+                    "primarycontactid@Microsoft.Dynamics.CRM.lookuplogicalname": "contact",
+                    "primarycontactid@OData.Community.Display.V1.FormattedValue": "Ada Lovelace"
+                }
+            ]
+        });
+        let entity_attributes = HashMap::from([(
+            "statecode".to_string(),
+            EntityAttribute {
+                logical_name: "statecode".to_string(),
+                schema_name: "StateCode".to_string(),
+                attribute_type: Some("State".to_string()),
+                attribute_type_name: Some(AttributeTypeName {
+                    value: Some("StateType".to_string()),
+                }),
+                is_custom_attribute: Some(false),
+                is_valid_odata_attribute: Some(true),
+                is_valid_for_read: Some(true),
+                is_valid_for_update: Some(false),
+            },
+        )]);
+
+        let entities =
+            parse_entities_from_response(
+                &json,
+                "contacts",
+                Some("contactid"),
+                Some(&entity_attributes),
+            )
+            .expect("should parse entities");
+
+        assert_eq!(entities.len(), 1);
+        let entity = &entities[0];
+        assert_eq!(entity.logical_name, "contact");
+        assert!(matches!(
+            entity.attributes.get("statecode"),
+            Some(crate::dataverse::entity::Value::OptionSetValue(option))
+                if option.value == 0 && option.name.as_deref() == Some("Active")
+        ));
+        assert!(matches!(
+            entity.attributes.get("primarycontactid"),
+            Some(crate::dataverse::entity::Value::EntityReference(reference))
+                if reference.logical_name == "contact"
+                    && reference.name.as_deref() == Some("Ada Lovelace")
+        ));
+    }
+
+    #[test]
+    fn record_count_uses_value_array_length() {
+        let count = parse_record_count_from_response(&json!({
+            "value": [{}, {}, {}]
+        }))
+        .expect("should count records");
+
+        assert_eq!(count, 3);
+    }
+
+    #[test]
+    fn infer_logical_name_handles_common_entity_set_pluralization() {
+        assert_eq!(infer_logical_name("contacts"), "contact");
+        assert_eq!(infer_logical_name("categories"), "category");
+        assert_eq!(infer_logical_name("boxes"), "box");
+    }
+}
