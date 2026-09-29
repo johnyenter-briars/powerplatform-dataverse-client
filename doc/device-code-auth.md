@@ -5,7 +5,7 @@ Device code auth is supported through Dataverse-style OAuth connection strings a
 ## Connection String
 
 ```text
-AuthType=OAuth;Url=https://YOUR_ORG.crm.dynamics.com;AppId=APP_ID;RedirectUri=app://58145B91-0C36-4500-8554-080854F2AC97;LoginPrompt=Auto;TokenCacheStorePath=C:\MyTokenCache
+AuthType=OAuth;Url=https://YOUR_ORG.crm.dynamics.com;AppId=51f81489-12ee-4a9e-aaae-a2591f45987d;TokenCacheStorePath=C:\MyTokenCache\device-code-token.json
 ```
 
 ## Notes
@@ -13,6 +13,7 @@ AuthType=OAuth;Url=https://YOUR_ORG.crm.dynamics.com;AppId=APP_ID;RedirectUri=ap
 - The client prints the Microsoft verification URL and device code to the console.
 - After browser sign-in completes, the client receives the token and proceeds.
 - Refresh tokens are persisted in the cache and used for automatic refresh.
+- `RedirectUri` and `LoginPrompt` are not used by this device-code implementation.
 
 ## Sample Scenario
 

@@ -6,6 +6,7 @@
 
 - Client-credentials auth refreshes by requesting a new access token.
 - Device-code auth refreshes by using the cached refresh token.
+- Interactive-browser auth uses its cached refresh token and reopens the browser if refresh fails.
 - The refresh threshold is currently five minutes before expiry.
 - Refresh state is stored in the token cache used by the client.
 

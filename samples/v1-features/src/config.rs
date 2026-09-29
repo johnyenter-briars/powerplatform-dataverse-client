@@ -8,6 +8,8 @@ pub struct Secrets {
     #[serde(default)]
     pub device_code_connection_string: String,
     #[serde(default)]
+    pub interactive_browser_connection_string: String,
+    #[serde(default)]
     pub client_credentials_connection_string: String,
 }
 

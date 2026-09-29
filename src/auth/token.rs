@@ -3,15 +3,17 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use base64::Engine;
+use ring::digest::{SHA256, digest};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::auth::config::AuthConfig;
-use crate::auth::devicecode::DeviceCodeFlowEvent;
 use crate::auth::credentials::{
     fetch_client_credentials_token_with_expiry, fetch_device_code_token_exchange_from_parts,
     fetch_device_code_token_exchange_from_parts_with_progress,
 };
+use crate::auth::devicecode::DeviceCodeFlowEvent;
+use crate::auth::interactivebrowser::fetch_interactive_browser_token;
 
 const REFRESH_SKEW_SECS: u64 = 300;
 
@@ -117,6 +119,20 @@ where
                 access_token: token.access_token,
             })
         }
+        AuthConfig::InteractiveBrowser {
+            client_id,
+            dataverse_url,
+            tenant_id,
+            ..
+        } => {
+            let token =
+                fetch_interactive_browser_token(client_id, dataverse_url, tenant_id).await?;
+            Ok(CachedToken {
+                expires_at: Some(token.expires_at),
+                refresh_token: Some(token.refresh_token),
+                access_token: token.access_token,
+            })
+        }
     }
 }
 
@@ -162,6 +178,25 @@ pub(crate) fn resolve_token_cache_file_path(auth: &AuthConfig) -> Result<PathBuf
     }
 
     let base = dirs::data_local_dir().ok_or("Unable to resolve local app data directory")?;
+    if let AuthConfig::InteractiveBrowser {
+        client_id,
+        dataverse_url,
+        tenant_id,
+        ..
+    } = auth
+    {
+        let identity = format!(
+            "{tenant_id}\n{client_id}\n{}",
+            dataverse_url.trim_end_matches('/')
+        );
+        let key = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(digest(&SHA256, identity.as_bytes()).as_ref());
+        return Ok(base
+            .join("powerplatform-dataverse-client")
+            .join("interactive-browser")
+            .join(key)
+            .join("token_cache.txt"));
+    }
     let cache_dir = base
         .join("powerplatform-dataverse-client")
         // TODO: Make this more deterministic to not cause lots of noise.
@@ -177,6 +212,10 @@ fn configured_token_cache_path(auth: &AuthConfig) -> Option<&str> {
             ..
         } => token_cache_store_path.as_deref(),
         AuthConfig::DeviceCode {
+            token_cache_store_path,
+            ..
+        } => token_cache_store_path.as_deref(),
+        AuthConfig::InteractiveBrowser {
             token_cache_store_path,
             ..
         } => token_cache_store_path.as_deref(),

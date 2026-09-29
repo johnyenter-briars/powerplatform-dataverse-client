@@ -29,12 +29,17 @@ cargo run -- --scenario metadata,fetchxml
 ### Available scenario ids
 
 - `device-code-auth`
+- `interactive-browser-auth`
 - `client-credentials-auth`
 - `batch`
 - `metadata`
 - `data-types`
 - `fetchxml`
 - `refresh-demo`
+
+To exercise browser sign-in, set your Dataverse URL in `interactive_browser_connection_string` and run `cargo run -- --scenario interactive-browser-auth`. The example uses Microsoft's Dataverse public client ID, so no app registration is required for it. Set unused connection strings to `""` when running every scenario. The browser and device-code examples use separate token cache files. `RedirectUri` and `LoginPrompt` are not read by this crate.
+
+If the browser cache file exists, the scenario reuses or refreshes its tokens without opening a browser. To test a new sign-in or keep another account, use a different `TokenCacheStorePath` filename. A new sign-in opens the default browser at Microsoft's account picker; you can choose an account there or open that browser URL in another profile.
 
 The `metadata` scenario exercises:
 

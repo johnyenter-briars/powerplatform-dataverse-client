@@ -19,6 +19,7 @@ TokenCacheStorePath=C:\MyTokenCache\token-cache.txt
 - If the value is a folder, the client writes `token_cache.txt` into that folder.
 - If the value is a file path, the client writes directly to that file.
 - If omitted, the client falls back to `data_local_dir()/powerplatform-dataverse-client/<guid>/token_cache.txt`.
+- Interactive-browser auth instead uses a stable cache path based on the tenant, client ID, and Dataverse URL.
 - The cache currently stores JSON containing the access token and refresh token.
 
 ## Related Scenarios

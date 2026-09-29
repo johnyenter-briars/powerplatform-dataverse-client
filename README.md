@@ -13,7 +13,8 @@ The **long term** goal for this project is feature parity with the [Microsoft.Po
 | Feature | Supported |
 | --- | --- |
 | [Client-credentials auth](doc/client-credentials-auth.md) | ✅ |
-| Authorization code / password grant token exchange | ❌ |
+| [Interactive browser authorization code + PKCE](doc/interactive-browser-auth.md) | ✅ |
+| Password grant token exchange | ❌ |
 | [Device code auth](doc/device-code-auth.md) | ✅ |
 | [Automatic token refresh](doc/token-refresh.md) | ✅ |
 | [Token cache](doc/token-cache.md) | ✅ |
@@ -72,6 +73,7 @@ Feature documentation:
 
 - [Client credentials auth](doc/client-credentials-auth.md)
 - [Device code auth](doc/device-code-auth.md)
+- [Interactive browser auth](doc/interactive-browser-auth.md)
 - [FetchXML](doc/fetchxml.md)
 - [Metadata](doc/metadata.md)
 - [Token refresh](doc/token-refresh.md)
@@ -191,6 +193,7 @@ cargo run
 [v1-features](samples/v1-features/README.md) contains one scenario per feature, all launched from `main`:
 
 - [Device code auth scenario](samples/v1-features/src/scenarios/device_code_auth.rs)
+- [Interactive browser auth scenario](samples/v1-features/src/scenarios/interactive_browser_auth.rs)
 - [Client credentials auth scenario](samples/v1-features/src/scenarios/client_credentials_auth.rs)
 - [Metadata scenario](samples/v1-features/src/scenarios/metadata.rs)
 - [Data types scenario](samples/v1-features/src/scenarios/data_types.rs)

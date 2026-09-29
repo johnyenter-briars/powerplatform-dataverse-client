@@ -904,6 +904,7 @@ dependencies = [
  "dirs",
  "log",
  "reqwest",
+ "ring",
  "rust_decimal",
  "serde",
  "serde_json",
