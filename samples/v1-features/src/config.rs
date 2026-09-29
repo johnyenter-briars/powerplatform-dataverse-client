@@ -18,9 +18,6 @@ pub const BUILTIN_SAMPLE_TABLES: &[&str] = &[
     "contact",
     "email",
     "activitypointer",
-    "incident",
-    "lead",
-    "opportunity",
     "systemuser",
     "task",
 ];

@@ -2,6 +2,7 @@ use std::future::Future;
 use std::pin::Pin;
 
 use crate::config::BUILTIN_SAMPLE_TABLES;
+use powerplatform_dataverse_client::LogLevel;
 use powerplatform_dataverse_client::dataverse::entity::Value;
 use powerplatform_dataverse_client::dataverse::serviceclient::ServiceClient;
 
@@ -43,8 +44,9 @@ const SUPPORTED_TYPES: &[SupportedType] = &[
     ]),
 ];
 
-pub fn run(client: &ServiceClient) -> Pin<Box<dyn Future<Output = Result<(), String>> + '_>> {
+pub fn run(connection_string: &str) -> Pin<Box<dyn Future<Output = Result<(), String>> + '_>> {
     Box::pin(async move {
+        let client = ServiceClient::new(connection_string, LogLevel::Information).await?;
         let definitions = client.list_entity_definitions().await?;
         let preferred_tables = BUILTIN_SAMPLE_TABLES
             .iter()

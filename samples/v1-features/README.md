@@ -30,11 +30,14 @@ cargo run -- --scenario metadata,fetchxml
 
 - `device-code-auth`
 - `interactive-browser-auth`
+- `device-code-progress`
 - `client-credentials-auth`
 - `batch`
+- `crud`
 - `metadata`
 - `data-types`
 - `fetchxml`
+- `request-parameters`
 - `refresh-demo`
 
 To exercise browser sign-in, set your Dataverse URL in `interactive_browser_connection_string` and run `cargo run -- --scenario interactive-browser-auth`. The example uses Microsoft's Dataverse public client ID, so no app registration is required for it. Set unused connection strings to `""` when running every scenario. The browser and device-code examples use separate token cache files. `RedirectUri` and `LoginPrompt` are not read by this crate.
@@ -49,4 +52,10 @@ The `metadata` scenario exercises:
 
 The `data-types` scenario scans metadata for supported Dataverse field types, finds the first non-null sample value it can retrieve for each type, and prints the typed Rust value.
 
-The `batch` scenario retrieves up to 10,000 accounts and updates their `tickersymbol` values in `ExecuteMultiple` batches of 200 requests.
+The `batch` scenario demonstrates `ExecuteMultiple` create, update, and delete requests with returned responses enabled.
+
+The `crud` scenario demonstrates direct `create_entity`, `update_entity`, and `delete_entity` calls against a temporary account row.
+
+The `request-parameters` scenario demonstrates the `*_with_options` methods and prints the Dataverse headers represented by `RequestParameters`.
+
+The `device-code-progress` scenario exercises `ensure_device_code_token_with_progress` and prints the emitted progress events before constructing a `ServiceClient`.

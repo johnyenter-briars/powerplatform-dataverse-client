@@ -1,99 +1,123 @@
 use std::future::Future;
 use std::pin::Pin;
 
+use powerplatform_dataverse_client::LogLevel;
 use powerplatform_dataverse_client::dataverse::batch::{
-    ExecuteMultipleRequest, ExecuteMultipleSettings, OrganizationRequest, UpdateRequest,
+    CreateRequest, DeleteRequest, ExecuteMultipleRequest, ExecuteMultipleSettings,
+    OrganizationRequest, OrganizationResponse, UpdateRequest,
 };
-use powerplatform_dataverse_client::dataverse::entity::{Entity, Value};
+use powerplatform_dataverse_client::dataverse::entity::{Entity, EntityReference, Value};
 use powerplatform_dataverse_client::dataverse::serviceclient::ServiceClient;
+use uuid::Uuid;
 
-const MAX_RECORDS: usize = 10_000;
-const BATCH_SIZE: usize = 200;
-
-pub fn run(client: &ServiceClient) -> Pin<Box<dyn Future<Output = Result<(), String>> + '_>> {
+pub fn run(connection_string: &str) -> Pin<Box<dyn Future<Output = Result<(), String>> + '_>> {
     Box::pin(async move {
-        let fetchxml = r#"
-        <fetch>
-            <entity name="account">
-                <attribute name="accountid" />
-                <attribute name="tickersymbol" />
-            </entity>
-        </fetch>
-    "#;
-
-        let mut accounts = client
-            .retrieve_multiple_fetchxml_paging("accounts", fetchxml)
-            .await?;
-        if accounts.len() > MAX_RECORDS {
-            accounts.truncate(MAX_RECORDS);
-        }
-        if accounts.is_empty() {
-            println!("No account records found for batch scenario.");
-            return Ok(());
-        }
-
-        println!(
-            "Preparing {} account update requests in batches of {}...",
-            accounts.len(),
-            BATCH_SIZE
-        );
-
-        let requests = accounts
-            .into_iter()
-            .map(|account| {
-                let mut target = Entity::new(account.id, "account", account.name.clone());
-                target.attributes.insert(
-                    "tickersymbol".to_string(),
-                    Value::String("foo".to_string())
+        let client = ServiceClient::new(connection_string, LogLevel::Information).await?;
+        let suffix = Uuid::new_v4().simple().to_string();
+        let create_requests = (0..2)
+            .map(|index| {
+                let mut entity = Entity::new(Uuid::nil(), "account", None);
+                entity.attributes.insert(
+                    "name".to_string(),
+                    Value::String(format!("v1-features batch {index} {suffix}")),
                 );
-
-                OrganizationRequest::Update(UpdateRequest::new(target))
+                entity.attributes.insert(
+                    "tickersymbol".to_string(),
+                    Value::String("BATCH".to_string()),
+                );
+                OrganizationRequest::Create(CreateRequest::new(entity))
             })
             .collect::<Vec<OrganizationRequest>>();
 
-        let total_batches = requests.len().div_ceil(BATCH_SIZE);
-        let mut total_faults = 0usize;
+        let create_response = client
+            .execute_multiple(&ExecuteMultipleRequest {
+                settings: ExecuteMultipleSettings {
+                    continue_on_error: false,
+                    return_responses: true,
+                },
+                requests: create_requests,
+            })
+            .await?;
 
-        for (batch_index, chunk) in requests.chunks(BATCH_SIZE).enumerate() {
-            println!(
-                "Executing batch {}/{} ({} request(s))",
-                batch_index + 1,
-                total_batches,
-                chunk.len()
-            );
+        let created_ids = create_response
+            .responses
+            .iter()
+            .filter_map(|item| match &item.response {
+                Some(OrganizationResponse::Create(response)) => response.id,
+                _ => None,
+            })
+            .collect::<Vec<Uuid>>();
 
-            let response = client
-                .execute_multiple(&ExecuteMultipleRequest {
-                    settings: ExecuteMultipleSettings {
-                        continue_on_error: false,
-                        return_responses: false,
-                    },
-                    requests: chunk.to_vec(),
-                })
-                .await?;
-
-            let batch_faults = response.responses.iter().filter(|item| item.fault.is_some()).count();
-            total_faults += batch_faults;
-
-            if batch_faults > 0 {
-                for item in response.responses.iter().filter(|item| item.fault.is_some()) {
-                    if let Some(fault) = &item.fault {
-                        println!(
-                            "Batch fault at request {}: {} ({})",
-                            item.request_index,
-                            fault.message,
-                            fault.code.as_deref().unwrap_or("no code")
-                        );
-                    }
-                }
-            }
+        if created_ids.len() != 2 {
+            return Err(format!(
+                "Batch create expected 2 created ids but got {}",
+                created_ids.len()
+            ));
         }
 
+        println!("Batch create succeeded for {} records.", created_ids.len());
+
+        let update_requests = created_ids
+            .iter()
+            .enumerate()
+            .map(|(index, id)| {
+                let mut entity = Entity::new(*id, "account", None);
+                entity.attributes.insert(
+                    "tickersymbol".to_string(),
+                    Value::String(format!("BATCH{index}")),
+                );
+                OrganizationRequest::Update(UpdateRequest::new(entity))
+            })
+            .collect::<Vec<OrganizationRequest>>();
+
+        let update_response = client
+            .execute_multiple(&ExecuteMultipleRequest {
+                settings: ExecuteMultipleSettings {
+                    continue_on_error: true,
+                    return_responses: true,
+                },
+                requests: update_requests,
+            })
+            .await?;
+
         println!(
-            "Batch scenario complete. Updated {} record(s) across {} batch(es). Faults: {}",
-            requests.len(),
-            total_batches,
-            total_faults
+            "Batch update completed with {} response item(s).",
+            update_response.responses.len()
+        );
+
+        let delete_requests = created_ids
+            .iter()
+            .map(|id| {
+                OrganizationRequest::Delete(DeleteRequest::new(EntityReference {
+                    id: *id,
+                    logical_name: "account".to_string(),
+                    name: None,
+                }))
+            })
+            .collect::<Vec<OrganizationRequest>>();
+
+        let delete_response = client
+            .execute_multiple(&ExecuteMultipleRequest {
+                settings: ExecuteMultipleSettings {
+                    continue_on_error: true,
+                    return_responses: true,
+                },
+                requests: delete_requests,
+            })
+            .await?;
+
+        let delete_faults = delete_response
+            .responses
+            .iter()
+            .filter(|item| item.fault.is_some())
+            .count();
+
+        println!(
+            "Batch scenario complete. Created {}, updated {}, deleted {}. Faults: {}",
+            created_ids.len(),
+            created_ids.len(),
+            created_ids.len(),
+            delete_faults
         );
 
         Ok(())

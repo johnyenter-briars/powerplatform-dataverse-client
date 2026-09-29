@@ -97,3 +97,42 @@ fn escape_xml_attribute(value: &str) -> String {
         .replace('"', "&quot;")
         .replace('\'', "&apos;")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{apply_paging, ensure_aggregate_page_size, fetch_tag_has_attr};
+
+    #[test]
+    fn apply_paging_inserts_page_and_cookie() {
+        let updated = apply_paging("<fetch><entity name=\"account\" /></fetch>", 3, Some("a&b"))
+            .expect("should apply paging");
+
+        assert!(updated.contains("page=\"3\""));
+        assert!(updated.contains("paging-cookie=\"a&amp;b\""));
+    }
+
+    #[test]
+    fn ensure_aggregate_page_size_only_changes_aggregate_fetches() {
+        let aggregate = ensure_aggregate_page_size(
+            "<fetch aggregate=\"true\"><entity name=\"account\" /></fetch>",
+            5000,
+        )
+        .expect("should add count");
+        let regular = ensure_aggregate_page_size(
+            "<fetch><entity name=\"account\" /></fetch>",
+            5000,
+        )
+        .expect("should keep regular fetch unchanged");
+
+        assert!(aggregate.contains("count=\"5000\""));
+        assert_eq!(regular, "<fetch><entity name=\"account\" /></fetch>");
+    }
+
+    #[test]
+    fn fetch_tag_has_attr_detects_existing_attributes() {
+        let fetchxml = "<fetch page=\"2\"><entity name=\"account\" /></fetch>";
+
+        assert!(fetch_tag_has_attr(fetchxml, "page").expect("should parse"));
+        assert!(!fetch_tag_has_attr(fetchxml, "count").expect("should parse"));
+    }
+}

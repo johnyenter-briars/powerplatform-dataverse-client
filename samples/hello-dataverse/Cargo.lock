@@ -907,13 +907,14 @@ dependencies = [
 
 [[package]]
 name = "powerplatform-dataverse-client"
-version = "0.1.0"
+version = "0.9.0"
 dependencies = [
  "base64",
  "chrono",
  "dirs",
  "log",
  "reqwest",
+ "ring",
  "rust_decimal",
  "serde",
  "serde_json",
