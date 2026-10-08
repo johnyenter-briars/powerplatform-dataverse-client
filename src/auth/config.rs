@@ -44,6 +44,20 @@ pub enum AuthConfig {
         #[serde(rename = "tokenCacheStorePath")]
         token_cache_store_path: Option<String>,
     },
+    /// System-browser authorization code flow with a loopback redirect and PKCE.
+    #[serde(rename = "InteractiveBrowser")]
+    InteractiveBrowser {
+        #[serde(rename = "clientId")]
+        client_id: String,
+        #[serde(rename = "dataverseUrl")]
+        dataverse_url: String,
+        #[serde(default)]
+        #[serde(rename = "tenantId")]
+        tenant_id: String,
+        #[serde(default)]
+        #[serde(rename = "tokenCacheStorePath")]
+        token_cache_store_path: Option<String>,
+    },
 }
 
 impl AuthConfig {
@@ -56,6 +70,7 @@ impl AuthConfig {
         match self {
             AuthConfig::ClientCredentials { dataverse_url, .. } => dataverse_url.trim_end_matches('/'),
             AuthConfig::DeviceCode { dataverse_url, .. } => dataverse_url,
+            AuthConfig::InteractiveBrowser { dataverse_url, .. } => dataverse_url.trim_end_matches('/'),
         }
     }
 
@@ -65,6 +80,7 @@ impl AuthConfig {
                 Some(format!("{}/.default", dataverse_url.trim_end_matches('/')))
             }
             AuthConfig::DeviceCode { .. } => None,
+            AuthConfig::InteractiveBrowser { .. } => None,
         }
     }
 }

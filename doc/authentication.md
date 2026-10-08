@@ -1,6 +1,6 @@
 # Authentication
 
-Authentication in this crate is centered on `AuthConfig`, device-code progress reporting, token refresh, and token caching.
+Authentication in this crate is centered on `AuthConfig`, interactive browser and device-code sign-in, token refresh, and token caching.
 
 Microsoft Learn background:
 
@@ -10,6 +10,7 @@ Related detailed pages:
 
 - [Client credentials auth](client-credentials-auth.md)
 - [Device code auth](device-code-auth.md)
+- [Interactive browser auth](interactive-browser-auth.md)
 - [Token refresh](token-refresh.md)
 - [Token cache](token-cache.md)
 
@@ -23,6 +24,7 @@ Variants:
 
 - `AuthConfig::ClientCredentials`
 - `AuthConfig::DeviceCode`
+- `AuthConfig::InteractiveBrowser`
 
 Methods:
 

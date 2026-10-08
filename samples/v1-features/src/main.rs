@@ -40,6 +40,12 @@ async fn main() -> Result<(), String> {
             run: scenarios::device_code_auth::run,
         },
         Scenario {
+            id: "interactive-browser-auth",
+            name: "interactive browser auth",
+            connection_string: |secrets| &secrets.interactive_browser_connection_string,
+            run: scenarios::interactive_browser_auth::run,
+        },
+        Scenario {
             id: "client-credentials-auth",
             name: "client credentials auth",
             connection_string: |secrets| &secrets.client_credentials_connection_string,
@@ -119,7 +125,7 @@ async fn main() -> Result<(), String> {
     if !attempted {
         return if selected.is_empty() {
             Err(
-                "Provide device_code_connection_string and/or client_credentials_connection_string in secrets.json"
+                "Provide device_code_connection_string, interactive_browser_connection_string, or client_credentials_connection_string in secrets.json"
                     .to_string(),
             )
         } else {

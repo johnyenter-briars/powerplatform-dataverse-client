@@ -136,7 +136,12 @@ pub(crate) async fn refresh_device_code_token(
     scope: &str,
     refresh_token: &str,
 ) -> Result<TokenExchange, String> {
-    refresh_token_exchange(client_id, None, tenant_id, scope, refresh_token).await
+    let tenant = if tenant_id.trim().is_empty() {
+        "organizations"
+    } else {
+        tenant_id
+    };
+    refresh_token_exchange(client_id, None, tenant, scope, refresh_token).await
 }
 
 fn build_dataverse_device_code_scope(dataverse_url: &str) -> String {

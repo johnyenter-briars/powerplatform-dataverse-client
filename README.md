@@ -4,7 +4,7 @@ Unofficial Rust SDK for the Microsoft [Dataverse (Power Platform)](https://learn
 
 The short-term goal is to provide Rust developers a simple yet robust SDK to building integrations with Dataverse.
 
-The long-term goal is full feature parity with the [Microsoft.PowerPlatform.Dataverse.Client](https://learn.microsoft.com/en-us/dotnet/api/microsoft.powerplatform.dataverse.client?view=dataverse-sdk-latest). 
+The long-term goal is full feature parity with the [Microsoft.PowerPlatform.Dataverse.Client](https://learn.microsoft.com/en-us/dotnet/api/microsoft.powerplatform.dataverse.client?view=dataverse-sdk-latest).
 
 `powerplatform-dataverse-client` is currently used as the Dataverse backend for [Queryverse](https://github.com/johnyenter-briars/queryverse).
 
@@ -14,6 +14,7 @@ The long-term goal is full feature parity with the [Microsoft.PowerPlatform.Data
 | --- | --- |
 | Client-credentials auth | ✅ |
 | Device code auth | ✅ |
+| [Interactive browser auth](doc/interactive-browser-auth.md) | ✅ |
 | Automatic token refresh | ✅ |
 | Token cache | ✅ |
 | FetchXML retrieval | ✅ |
@@ -78,6 +79,7 @@ cargo run
 [v1-features](samples/v1-features/README.md) contains one scenario per feature:
 
 - [Device code auth scenario](samples/v1-features/src/scenarios/device_code_auth.rs)
+- [Interactive browser auth scenario](samples/v1-features/src/scenarios/interactive_browser_auth.rs)
 - [Device code progress scenario](samples/v1-features/src/scenarios/device_code_progress.rs)
 - [Client credentials auth scenario](samples/v1-features/src/scenarios/client_credentials_auth.rs)
 - [Metadata scenario](samples/v1-features/src/scenarios/metadata.rs)
@@ -117,13 +119,14 @@ See [doc/logging.md](doc/logging.md).
 
 ### Authentication
 
-Authentication centers on `AuthConfig`, device-code progress events, token refresh, and token cache handling.
+Authentication centers on `AuthConfig`, interactive browser and device-code sign-in, token refresh, and token cache handling.
 
 See:
 
 - [doc/authentication.md](doc/authentication.md)
 - [doc/client-credentials-auth.md](doc/client-credentials-auth.md)
 - [doc/device-code-auth.md](doc/device-code-auth.md)
+- [doc/interactive-browser-auth.md](doc/interactive-browser-auth.md)
 - [doc/token-refresh.md](doc/token-refresh.md)
 - [doc/token-cache.md](doc/token-cache.md)
 

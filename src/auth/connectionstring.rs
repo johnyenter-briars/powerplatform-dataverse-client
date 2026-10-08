@@ -59,6 +59,23 @@ pub(crate) fn parse_connection_string_auth_config(
         .cloned()
         .filter(|value| !value.trim().is_empty());
 
+    let interactive = values
+        .get("authtype")
+        .is_some_and(|value| value.eq_ignore_ascii_case("interactivebrowser"))
+        || values
+            .get("authenticationflow")
+            .is_some_and(|value| value.eq_ignore_ascii_case("interactivebrowser"));
+    if interactive {
+        let client_id =
+            client_id.ok_or("Interactive browser auth requires AppId or ClientId".to_string())?;
+        return Ok(AuthConfig::InteractiveBrowser {
+            client_id,
+            dataverse_url: url.trim_end_matches('/').to_string(),
+            tenant_id: tenant_id.unwrap_or_else(|| "organizations".to_string()),
+            token_cache_store_path,
+        });
+    }
+
     if let (Some(client_id), Some(client_secret), Some(tenant_id)) =
         (client_id.clone(), client_secret, tenant_id.clone())
     {
@@ -141,11 +158,27 @@ pub(crate) fn parse_device_code_connection_string(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        parse_connection_string_auth_config, parse_connection_string_url,
-        parse_device_code_connection_string,
-    };
-    use crate::auth::config::AuthConfig;
+    use super::*;
+
+    #[test]
+    fn selects_browser_without_changing_oauth_default() {
+        let base = "AuthType=OAuth;Url=https://example.crm.dynamics.com;AppId=client";
+        assert!(matches!(
+            parse_connection_string_auth_config(base).unwrap(),
+            AuthConfig::DeviceCode { .. }
+        ));
+        let browser = format!("{base};AuthenticationFlow=InteractiveBrowser");
+        assert!(matches!(
+            parse_connection_string_auth_config(&browser).unwrap(),
+            AuthConfig::InteractiveBrowser { .. }
+        ));
+        let browser =
+            "AuthType=InteractiveBrowser;Url=https://example.crm.dynamics.com;ClientId=client";
+        assert!(matches!(
+            parse_connection_string_auth_config(browser).unwrap(),
+            AuthConfig::InteractiveBrowser { .. }
+        ));
+    }
 
     #[test]
     fn parses_client_credentials_auth_config() {
@@ -177,7 +210,7 @@ mod tests {
                     Some("C:\\cache\\token.json")
                 );
             }
-            AuthConfig::DeviceCode { .. } => panic!("expected client credentials auth"),
+            _ => panic!("expected client credentials auth"),
         }
     }
 
@@ -203,7 +236,7 @@ mod tests {
                 assert_eq!(tenant_id, "organizations");
                 assert!(token_cache_store_path.is_none());
             }
-            AuthConfig::ClientCredentials { .. } => panic!("expected device code auth"),
+            _ => panic!("expected device code auth"),
         }
     }
 

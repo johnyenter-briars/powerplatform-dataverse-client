@@ -5,6 +5,7 @@ pub mod data_types;
 pub mod device_code_auth;
 pub mod device_code_progress;
 pub mod fetchxml;
+pub mod interactive_browser_auth;
 pub mod metadata;
 pub mod request_parameters;
 pub mod refresh_demo;

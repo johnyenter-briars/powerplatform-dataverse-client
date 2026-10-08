@@ -125,7 +125,34 @@ impl ServiceClient {
             if !cached.access_token.trim().is_empty() && !is_expiring_soon(cached.expires_at) {
                 cached
             } else {
-                let refreshed = fetch_token_for_config(&auth).await?;
+                let refreshed = if let AuthConfig::InteractiveBrowser {
+                    client_id,
+                    dataverse_url,
+                    tenant_id,
+                    ..
+                } = &auth
+                {
+                    if let Some(refresh_token) = &cached.refresh_token {
+                        let scope = format!(
+                            "{}/user_impersonation offline_access openid profile",
+                            dataverse_url.trim_end_matches('/')
+                        );
+                        match refresh_device_code_token(client_id, tenant_id, &scope, refresh_token)
+                            .await
+                        {
+                            Ok(token) => CachedToken {
+                                access_token: token.access_token,
+                                refresh_token: Some(token.refresh_token),
+                                expires_at: Some(token.expires_at),
+                            },
+                            Err(_) => fetch_token_for_config(&auth).await?,
+                        }
+                    } else {
+                        fetch_token_for_config(&auth).await?
+                    }
+                } else {
+                    fetch_token_for_config(&auth).await?
+                };
                 save_cached_token(&token_cache_path, &refreshed)?;
                 refreshed
             }
@@ -817,6 +844,31 @@ impl ServiceClient {
                     expires_at: Some(token.expires_at),
                 }
             }
+            AuthConfig::InteractiveBrowser {
+                client_id,
+                dataverse_url,
+                tenant_id,
+                ..
+            } => {
+                let scope = format!(
+                    "{}/user_impersonation offline_access openid profile",
+                    dataverse_url.trim_end_matches('/')
+                );
+                if let Some(refresh_token) = &token.refresh_token {
+                    match refresh_device_code_token(client_id, tenant_id, &scope, refresh_token)
+                        .await
+                    {
+                        Ok(refreshed) => CachedToken {
+                            access_token: refreshed.access_token,
+                            refresh_token: Some(refreshed.refresh_token),
+                            expires_at: Some(refreshed.expires_at),
+                        },
+                        Err(_) => fetch_token_for_config(&self.auth).await?,
+                    }
+                } else {
+                    fetch_token_for_config(&self.auth).await?
+                }
+            }
         };
 
         save_cached_token(&self.token_cache_path, &refreshed)?;
@@ -1114,6 +1166,55 @@ fn parse_uuid_from_uri(value: &str) -> Option<Uuid> {
     let start = value.rfind('(')? + 1;
     let end = value.rfind(')')?;
     Uuid::parse_str(value[start..end].trim_matches('{').trim_matches('}')).ok()
+}
+
+#[cfg(test)]
+mod auth_cache_tests {
+    use super::*;
+    use base64::Engine;
+
+    #[tokio::test]
+    async fn valid_browser_cache_is_used_before_sign_in() {
+        let path = std::env::temp_dir().join(format!(
+            "dataverse-browser-cache-{}.json",
+            Uuid::new_v4()
+        ));
+        let expires_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            + 3600;
+        let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(format!("{{\"exp\":{expires_at}}}"));
+        save_cached_token(
+            &path,
+            &CachedToken {
+                access_token: format!("header.{payload}.signature"),
+                refresh_token: Some("cached-refresh-token".to_string()),
+                expires_at: Some(expires_at),
+            },
+        )
+        .unwrap();
+
+        let auth = AuthConfig::InteractiveBrowser {
+            client_id: "test-client".to_string(),
+            dataverse_url: "https://example.crm.dynamics.com".to_string(),
+            tenant_id: "organizations".to_string(),
+            token_cache_store_path: Some(path.to_string_lossy().into_owned()),
+        };
+        let client = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            ServiceClient::new_with_auth(auth, LogLevel::Error),
+        )
+        .await
+        .expect("cached token should avoid browser sign-in")
+        .unwrap();
+        assert_eq!(
+            client.token_expires_at().await.unwrap().timestamp() as u64,
+            expires_at
+        );
+        std::fs::remove_file(path).unwrap();
+    }
 }
 
 #[cfg(test)]
